@@ -1,3 +1,4 @@
+# src/homography.py
 """
 Homography estimation, error computation, and refinement.
 

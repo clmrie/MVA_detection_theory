@@ -1,3 +1,4 @@
+# src/degeneracy.py
 """
 Degeneracy and sanity checks for homography estimation.
 

@@ -1,3 +1,4 @@
+# tests/test_degeneracy.py
 """Tests for the degeneracy check module."""
 
 import numpy as np

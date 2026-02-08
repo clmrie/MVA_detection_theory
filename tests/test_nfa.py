@@ -1,3 +1,4 @@
+# tests/test_nfa.py
 """Tests for the NFA (Number of False Alarms) computation module."""
 
 import numpy as np

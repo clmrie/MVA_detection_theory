@@ -1,3 +1,4 @@
+# experiments/synthetic.py
 """
 Synthetic data generation for ORSA experiments.
 

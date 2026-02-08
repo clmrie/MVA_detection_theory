@@ -1,3 +1,4 @@
+# src/visualization.py
 """
 Visualization utilities for ORSA homography registration.
 

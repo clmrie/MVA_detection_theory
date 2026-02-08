@@ -1,3 +1,4 @@
+# src/matching.py
 """
 Feature detection and matching using OpenCV.
 

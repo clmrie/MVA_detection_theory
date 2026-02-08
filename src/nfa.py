@@ -1,3 +1,4 @@
+# src/nfa.py
 """
 A-contrario NFA (Number of False Alarms) computation for ORSA.
 
