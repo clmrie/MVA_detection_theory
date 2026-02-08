@@ -86,7 +86,7 @@ def compute_best_nfa(
     n_data : total number of matches
     sample_size : minimal sample size (4 for homography)
     n_outcomes : number of models per sample (1 for homography)
-    log_combi_n : precomputed log10(C(n_data - sample_size, j)) for j=0..n-p
+    log_combi_n : precomputed log10(C(n_data, k)) for k=0..n
     log_combi_k : precomputed log10(C(m, sample_size)) for m=0..n_data
     mult_error : multiplier for log10(error); 0.5 for squared distances
     max_threshold : maximum allowed error threshold
@@ -124,17 +124,18 @@ def compute_best_nfa(
         if logalpha > 0.0:
             logalpha = 0.0
 
-        # j = number of inliers beyond the sample_size points
-        # j = (i + 1) - sample_size = i - sample_size + 1
-        j = i - sample_size + 1  # j >= 1
+        # k = i + 1 = number of inliers
+        # j = k - sample_size = number of inliers beyond the minimal sample
+        k = i + 1
+        j = k - sample_size  # j >= 1
 
-        # NFA(k) = n_outcomes * (n-p) * C(n-p, j) * C(i+1, p) * alpha^j
-        # But log_combi_n is indexed from 0..n-p, log_combi_k from 0..n
+        # NFA(k) = n_outcomes * (n-p) * C(n, k) * C(k, p) * alpha^(k-p)
+        # Paper Eq. (3): NFA(k) = (n-4) * C(n, k) * C(k, 4) * alpha^(k-4)
         log_nfa = (
             loge0
             + logalpha * j
-            + log_combi_n[j]       # log10(C(n-p, j))
-            + log_combi_k[i + 1]   # log10(C(k, p)) where k = i+1
+            + log_combi_n[k]       # log10(C(n, k))
+            + log_combi_k[k]       # log10(C(k, p)) where p = sample_size
         )
 
         if log_nfa < best_log_nfa:
@@ -181,12 +182,13 @@ def compute_nfa_for_all_k(
         logalpha = logalpha0[side_i] + mult_error * np.log10(error_i + eps_machine)
         if logalpha > 0.0:
             logalpha = 0.0
-        j = i - sample_size + 1
+        k = i + 1
+        j = k - sample_size
         log_nfas[i] = (
             loge0
             + logalpha * j
-            + log_combi_n[j]
-            + log_combi_k[i + 1]
+            + log_combi_n[k]       # log10(C(n, k))
+            + log_combi_k[k]       # log10(C(k, p))
         )
 
     return log_nfas

@@ -701,7 +701,7 @@ def _compute_nfa_curve(result, match_result, img1, img2):
         np.log10(np.pi / (w1 * h1)),
         np.log10(np.pi / (w2 * h2)),
     ])
-    log_combi_n = precompute_log_combi_n(n - sample_size)
+    log_combi_n = precompute_log_combi_n(n)
     log_combi_k = precompute_log_combi_k(sample_size, n)
 
     log_nfas = compute_nfa_for_all_k(

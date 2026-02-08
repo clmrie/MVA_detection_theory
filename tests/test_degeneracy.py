@@ -53,11 +53,13 @@ class TestCheckConditioning:
         assert not check_conditioning(H)
 
     def test_good_homography(self):
-        """Typical homography should pass."""
+        """Normalized homography should pass (conditioning is checked on
+        the normalized H in the DLT pipeline, where cond ~= 1-10)."""
+        # A well-conditioned normalized homography (as produced inside DLT)
         H = np.array([
-            [1.05, 0.08, 15],
-            [-0.03, 0.98, 10],
-            [0.0001, 0.00005, 1],
+            [1.05, 0.08, 0.01],
+            [-0.03, 0.98, 0.02],
+            [0.01, 0.005, 1.0],
         ])
         assert check_conditioning(H)
 

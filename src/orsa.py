@@ -115,12 +115,14 @@ def orsa_homography(
     ])
 
     # Precompute binomial coefficient tables
-    n_minus_p = n - sample_size
-    log_combi_n = precompute_log_combi_n(n_minus_p)
+    # log_combi_n[k] = log10(C(n, k)) for k=0..n  (paper Eq. 3)
+    log_combi_n = precompute_log_combi_n(n)
     log_combi_k = precompute_log_combi_k(sample_size, n)
 
     # Initialize best model tracking
-    best_log_nfa = 0.0  # log10(1) = 0; NFA >= 1 means not meaningful
+    # Track best model overall (min log_nfa, even if > 0) to guide
+    # focused sampling in reserved iterations, as in IPOL algorithm
+    best_log_nfa = np.inf
     best_H = None
     best_inlier_mask = np.zeros(n, dtype=bool)
     best_epsilon = 0.0
@@ -162,8 +164,9 @@ def orsa_homography(
         if H is None:
             continue
 
-        # Orientation check
-        if not check_orientation_preserving(H, pts1, pts2):
+        # Orientation check on sample points only (not all points)
+        # Invalid correspondences get infinite error in symmetric_transfer_error
+        if not check_orientation_preserving(H, pts1, pts2, indices=indices):
             continue
 
         # Valid warp check: reject degenerate H that collapses space
@@ -248,6 +251,15 @@ def orsa_homography(
                 inlier_indices_ref = order_ref[:k_ref]
                 best_inlier_mask = np.zeros(n, dtype=bool)
                 best_inlier_mask[inlier_indices_ref] = True
+
+    # If no meaningful detection (NFA >= 1), report as non-detection
+    is_meaningful = best_log_nfa < 0
+    if not is_meaningful:
+        best_H = None
+        best_inlier_mask = np.zeros(n, dtype=bool)
+        best_k = 0
+        best_epsilon = 0.0
+        best_log_nfa = 0.0  # NFA = 1
 
     # Compute final reprojection errors on inliers
     reproj_errors = None

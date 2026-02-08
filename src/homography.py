@@ -84,6 +84,10 @@ def fit_homography_dlt(pts1: np.ndarray, pts2: np.ndarray) -> np.ndarray | None:
     h = Vt[-1, :]
     H_norm = h.reshape(3, 3)
 
+    # Check conditioning on the normalized H (before denormalization)
+    if not check_conditioning(H_norm):
+        return None
+
     # Denormalize
     H = np.linalg.inv(T2) @ H_norm @ T1
 
@@ -91,10 +95,6 @@ def fit_homography_dlt(pts1: np.ndarray, pts2: np.ndarray) -> np.ndarray | None:
     if abs(H[2, 2]) < 1e-15:
         return None
     H = H / H[2, 2]
-
-    # Check conditioning
-    if not check_conditioning(H):
-        return None
 
     return H
 
@@ -188,7 +188,7 @@ def refine_homography(
     inlier_mask: np.ndarray,
 ) -> np.ndarray | None:
     """Refine H using Levenberg-Marquardt minimization on inlier
-    correspondences, minimizing symmetric transfer error.
+    correspondences, minimizing forward transfer error d(H @ x1, x2).
 
     Parameterization: 8 free parameters (H[2,2] = 1 fixed).
 
@@ -242,8 +242,6 @@ def refine_homography(
             [h_opt[3], h_opt[4], h_opt[5]],
             [h_opt[6], h_opt[7], 1.0],
         ])
-        if not check_conditioning(H_refined):
-            return None
         return H_refined
     except Exception:
         return None

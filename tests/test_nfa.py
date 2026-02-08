@@ -76,7 +76,7 @@ class TestPrecomputeLogCombiK:
 class TestComputeBestNFA:
     def _setup_tables(self, n, sample_size=4):
         """Helper to create precomputed tables."""
-        log_combi_n = precompute_log_combi_n(n - sample_size)
+        log_combi_n = precompute_log_combi_n(n)
         log_combi_k = precompute_log_combi_k(sample_size, n)
         return log_combi_n, log_combi_k
 
@@ -152,7 +152,7 @@ class TestComputeBestNFA:
         sorted_errors = np.array([0.1, 0.2, 0.3, 0.4])
         sorted_sides = np.zeros(n, dtype=int)
         logalpha0 = np.array([np.log10(np.pi / (640 * 480))] * 2)
-        lcn = precompute_log_combi_n(0)
+        lcn = precompute_log_combi_n(4)
         lck = precompute_log_combi_k(4, 4)
 
         log_nfa, best_k, best_err = compute_best_nfa(

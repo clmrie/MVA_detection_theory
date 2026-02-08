@@ -113,7 +113,7 @@ python -m pytest tests/test_orsa.py -v
 
 1. **Random sampling**: Draw minimal 4-point samples and estimate homographies via DLT with Hartley normalization.
 2. **Adaptive threshold**: For each candidate, test all possible inlier counts *k* and select the threshold that minimizes NFA(*k*, *epsilon*).
-3. **NFA criterion**: NFA = *n_tests* x C(*n-4*, *k-4*) x *alpha*^(*k-4*), where *alpha* = *pi* x *epsilon*^2 / (*w* x *h*) is the probability of a random inlier. Computed in log-space for numerical stability.
+3. **NFA criterion**: NFA = (*n*-4) x C(*n*, *k*) x C(*k*, 4) x *alpha*^(*k*-4), where *alpha* = *pi* x *epsilon*^2 / (*w* x *h*) is the probability of a random inlier. Computed in log-space for numerical stability.
 4. **Adaptive iterations**: Iteration count adjusts based on the current estimated inlier ratio.
 5. **Refinement**: Best model is iteratively refit on its inlier set, then polished with Levenberg-Marquardt optimization.
 6. **Degeneracy checks**: Collinearity detection, orientation preservation, conditioning, and valid warp verification prevent degenerate solutions.

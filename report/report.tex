@@ -1,0 +1,711 @@
+\documentclass[11pt,a4paper]{article}
+
+% ─── Packages ──────────────────────────────────────────────────────────────
+\usepackage[T1]{fontenc}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{cleveref}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{natbib}
+\usepackage{microtype}
+
+% ─── Theorem environments ──────────────────────────────────────────────────
+\newtheorem{definition}{Definition}
+\newtheorem{proposition}{Proposition}
+\newtheorem{theorem}{Theorem}
+
+% ─── Shortcuts ─────────────────────────────────────────────────────────────
+\newcommand{\NFA}{\mathrm{NFA}}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\Prob}{\mathbb{P}}
+\DeclareMathOperator*{\argmin}{arg\,min}
+
+% ─── Title ─────────────────────────────────────────────────────────────────
+\title{%
+  A-Contrario Homography Registration with ORSA:\\
+  Implementation, Analysis, and Experiments%
+}
+\author{
+  [Name]\\
+  MVA, ENS Paris-Saclay\\
+  \texttt{[email]}
+}
+\date{February 2025}
+
+% ═══════════════════════════════════════════════════════════════════════════
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We present a complete implementation and experimental analysis of the ORSA
+(Optimized Random Sampling) algorithm for automatic homographic registration
+of image pairs, following the a-contrario framework of Moisan, Moulon, and
+Monasse~\cite{moisan2012}. Unlike classical RANSAC, which requires a
+manually tuned inlier threshold, ORSA adaptively selects the threshold that
+minimizes the Number of False Alarms (NFA), providing rigorous statistical
+control on false detections. We describe the detection problem, derive the
+NFA formula, verify it satisfies the theoretical requirements, detail our
+implementation, and present experiments on synthetic and real data covering
+null-model validation, robustness to outliers, sensitivity analysis, and
+failure cases.
+\end{abstract}
+
+% ═══════════════════════════════════════════════════════════════════════════
+\section{Introduction}\label{sec:intro}
+
+Estimating a homography between two images of a planar scene (or two views
+related by a pure rotation) is a fundamental problem in computer vision,
+with applications in panoramic stitching, augmented reality, and visual
+localization. The standard approach is to detect and match keypoints
+(e.g.\ SIFT~\cite{lowe2004}), then estimate the geometric model while
+rejecting outlier matches.
+
+RANSAC~\cite{fischler1981} is the most widely used robust estimator, but
+it relies on a \emph{fixed inlier threshold}, which is
+difficult to set in practice: too small and inliers are missed; too large
+and the model is contaminated by outliers. Moreover, RANSAC provides no
+principled criterion for deciding whether the detected model is
+\emph{meaningful} or just an artifact of random data.
+
+The a-contrario framework~\cite{desolneux2000,desolneux2008} addresses
+both issues. Inspired by Gestalt theory---specifically the
+\emph{non-accidentalness principle}, which states that a structure is
+perceptually meaningful if it is very unlikely to occur by chance---the
+approach defines a background (null) model $\mathcal{H}_0$ of random,
+unstructured data and measures meaningfulness via the \emph{Number of False
+Alarms} (NFA). A detection is declared when $\NFA < 1$ (equivalently,
+$\log_{10}\NFA < 0$), meaning the observed structure would occur less than
+once on average in purely random data.
+
+ORSA~\cite{moisan2012} combines the a-contrario criterion with RANSAC-style
+random sampling, adaptively choosing both the inlier threshold and the
+inlier count to minimize the NFA over all possible thresholds. This
+paper describes our implementation and experimental study of ORSA for
+homography estimation.
+
+% ─── Gestalt connection ───────────────────────────────────────────────────
+\paragraph{Link to Gestalt theory.}
+The Gestalt \emph{law of good continuation} and the
+\emph{non-accidentalness principle} motivate the a-contrario approach:
+a set of point correspondences that are simultaneously consistent with a
+single homography is ``too organized to be accidental.'' The NFA
+quantifies exactly how surprising such agreement is under a model of
+random, independent correspondences.
+
+% ═══════════════════════════════════════════════════════════════════════════
+\section{Detection Problem}\label{sec:problem}
+
+\subsection{Informal statement}
+Given two images of a scene and a set of $n$ putative point
+correspondences $(x_i, x'_i)_{i=1}^n$ obtained by feature matching, the
+goal is to:
+\begin{enumerate}[nosep]
+  \item Decide whether a subset of the correspondences is consistent with
+        a single homography $H$ (a $3\times3$ projective transformation).
+  \item If so, identify which correspondences are \emph{inliers} (consistent
+        with $H$) and which are \emph{outliers}, and estimate $H$.
+  \item Provide a rigorous, parameter-free criterion for declaring the
+        detection meaningful.
+\end{enumerate}
+
+\Cref{fig:example_matches} illustrates the problem on an easy and a hard
+image pair.
+
+\begin{figure}[htbp]
+  \centering
+  \begin{subfigure}[b]{0.48\textwidth}
+    \includegraphics[width=\textwidth]{figures/real_easy_easy.png}
+    \caption{Easy case: 66/79 inliers, $\log_{10}\NFA=-270$.}
+  \end{subfigure}
+  \hfill
+  \begin{subfigure}[b]{0.48\textwidth}
+    \includegraphics[width=\textwidth]{figures/real_hard_hard.png}
+    \caption{Hard case: 27/37 inliers, $\log_{10}\NFA=-84$.}
+  \end{subfigure}
+  \caption{ORSA results on real image pairs. Green lines: inliers; red
+  lines: outliers. Top-left: match visualization; top-right: warped blend;
+  bottom-left: NFA curve; bottom-right: error histogram.}
+  \label{fig:example_matches}
+\end{figure}
+
+\subsection{Background model}\label{sec:background}
+Under the null hypothesis $\mathcal{H}_0$, the $n$ correspondences are
+independent, and for each correspondence $(x_i, x'_i)$, the point $x'_i$
+is uniformly distributed over the target image of dimensions $w \times h$.
+More precisely, for any homography $H$ and any distance threshold $r > 0$,
+the probability that a random correspondence appears as an inlier
+(i.e.\ has symmetric transfer error $\leq r^2$) is bounded by:
+\begin{equation}\label{eq:alpha}
+  \alpha(r) = \frac{\pi r^2}{wh},
+\end{equation}
+since the set of points within distance $r$ of a given point
+is contained in a disk of area $\pi r^2$, and the image area
+is $wh$.
+
+% ═══════════════════════════════════════════════════════════════════════════
+\section{NFA Definition}\label{sec:nfa}
+
+\subsection{Event, precision, and family of tests}
+
+\paragraph{Event.}
+The event we test is: ``among $n$ correspondences, at least $k$ of them
+are consistent with a homography estimated from some 4-point subset, with
+residual at most $r^2$.''
+
+\paragraph{Precision parameter.}
+The distance threshold $r$ (equivalently, the squared error
+$r^2$) serves as the precision parameter. Rather than fixing
+$r$ a priori, ORSA tests \emph{all} thresholds induced by
+the data: for each $k \in \{5, \ldots, n\}$, we set $r_k^2$ to
+be the $k$-th smallest squared residual $e_{\sigma(k)}$ under the candidate homography.
+
+\paragraph{Family of tests.}
+The family of tests is indexed by:
+\begin{itemize}[nosep]
+  \item The number of inliers $k \in \{5, \ldots, n\}$, giving
+        $n-4$ possible values.
+  \item The 4-point subset used to generate the candidate homography;
+        there are $\binom{k}{4}$ such subsets among the $k$ inliers.
+\end{itemize}
+
+\paragraph{Number of tests.}
+Following~\cite{moisan2012}, the family of tests is indexed by
+the inlier count $k$, giving $|\mathcal{T}| = n - 4$ tests
+(one for each $k \in \{5, \ldots, n\}$). For each test, the
+combinatorial weight $\binom{n}{k}\binom{k}{4}$ upper-bounds the
+number of ways to select $k$ inliers among $n$ and a generating
+4-point subset among them. This weight is absorbed into the NFA
+formula~\eqref{eq:nfa} rather than counted as separate tests,
+which keeps the NFA bound tight.
+
+\subsection{NFA formula}
+\begin{definition}[NFA for homography detection]\label{def:nfa}
+For $n$ correspondences, sample size $p=4$, and a candidate with $k$
+inliers ($k \geq p+1$) at squared-error threshold $r_k^2 = e_{\sigma(k)}$,
+the Number of False Alarms is:
+\begin{equation}\label{eq:nfa}
+  \boxed{
+  \NFA(k) = (n-4)\;\binom{n}{k}\;\binom{k}{4}\;\alpha(r_k)^{k-4}
+  }
+\end{equation}
+where $\alpha(r_k) = \pi r_k^2/(wh)$ is the probability
+\eqref{eq:alpha} that a single random correspondence falls within
+distance $r_k$ of the model prediction.
+\end{definition}
+
+In practice, we compute everything in $\log_{10}$ space for numerical
+stability. Writing $r_k^2 = e_{\sigma(k)}$ for the $k$-th smallest
+squared residual (so that $r_k$ is the corresponding distance), we have:
+\begin{equation}\label{eq:lognfa}
+  \log_{10}\NFA(k)
+  = \log_{10}(n{-}4)
+  + \log_{10}\binom{n}{k}
+  + \log_{10}\binom{k}{4}
+  + (k{-}4)\,\bigl[\log_{10}\pi - \log_{10}(wh) + \log_{10}(r_k^2)\bigr].
+\end{equation}
+Note that since $e_{\sigma(k)}$ is already a squared distance, $\log_{10}(r_k^2) = \log_{10}(e_{\sigma(k)})$, so the multiplier on the error in log-space is $1.0$ (not $0.5$).
+
+The ORSA algorithm selects $k^* = \argmin_k \NFA(k)$, and declares a
+meaningful detection when $\NFA(k^*) < 1$.
+
+\subsection{Symmetric transfer error and side indicator}
+The residual for correspondence $(x_i, x'_i)$ is the
+\emph{symmetric transfer error}~\cite{hartley2003}:
+\begin{equation}
+  e_i = \max\!\big(d(x'_i,\, Hx_i)^2,\; d(x_i,\, H^{-1}x'_i)^2\big),
+\end{equation}
+and the \emph{side} indicator $s_i \in \{0,1\}$ records which image
+dominates (0 for left/backward, 1 for right/forward). This allows using
+the correct image dimensions $(w_{s_i}, h_{s_i})$ in $\alpha$.
+
+% ═══════════════════════════════════════════════════════════════════════════
+\section{Verification: Is It Truly an NFA?}\label{sec:verification}
+
+We verify that our definition satisfies the a-contrario requirement
+from~\cite{desolneux2008}: the expected number of false alarms under
+$\mathcal{H}_0$ is controlled.
+
+\begin{theorem}[NFA property]\label{thm:nfa}
+Under the background model $\mathcal{H}_0$, for any $\eta > 0$:
+\[
+  \E_{\mathcal{H}_0}\!\Big[\#\{k : \NFA(k) \leq \eta\}\Big] \leq \eta.
+\]
+In particular, setting $\eta = 1$, the expected number of false
+detections (values of $k$ with $\NFA(k) \leq 1$) is at most~1.
+\end{theorem}
+
+\begin{proof}
+Under $\mathcal{H}_0$, the correspondences are independent and each
+$\alpha_i = \pi r_i^2/(wh)$ satisfies
+$\Prob[\alpha_i \leq u] \leq u$ for $u \in [0,1]$ (since $x'_i$ is
+uniform over the image). Let $\alpha_{(k)}$ denote the $k$-th order
+statistic (i.e.\ $\alpha$ evaluated at the $k$-th smallest residual).
+The proof proceeds in three steps.
+
+\medskip\noindent\textbf{Step 1: Order-statistic p-value.}
+$\binom{n}{k}\alpha_{(k)}^{k}$ is a valid p-value: for any $u \in [0,1]$,
+\[
+  \Prob\!\Big[\binom{n}{k}\alpha_{(k)}^k \leq u\Big]
+  = \Prob\!\Big[\alpha_{(k)} \leq \Big(\frac{u}{\binom{n}{k}}\Big)^{\!1/k}\Big]
+  \leq \binom{n}{k}\Big(\frac{u}{\binom{n}{k}}\Big)
+  = u,
+\]
+where we used the standard bound: $\Prob[\alpha_{(k)} \leq t]
+= \Prob[\text{at least }k\text{ of }n\text{ values} \leq t]
+\leq \binom{n}{k} t^k$ (dominant term of the binomial tail).
+
+\medskip\noindent\textbf{Step 2: Our formula is more conservative.}
+For $\alpha_{(k)} \in [0,1]$ and $k \geq 5$, we have
+$\alpha_{(k)}^{-4} \geq 1$ and $\binom{k}{4} \geq 1$, so:
+\[
+  \binom{n}{k}\binom{k}{4}\,\alpha_{(k)}^{k-4}
+  = \underbrace{\binom{n}{k}\alpha_{(k)}^k}_{\text{valid p-value}}
+  \;\times\; \underbrace{\binom{k}{4}\,\alpha_{(k)}^{-4}}_{\geq\, 1}
+  \;\geq\; \binom{n}{k}\alpha_{(k)}^k.
+\]
+Therefore, defining
+$\Phi(k) = \binom{n}{k}\binom{k}{4}\,\alpha_{(k)}^{k-4}$, we have
+$\Prob[\Phi(k) \leq u] \leq \Prob[\binom{n}{k}\alpha_{(k)}^k \leq u]
+\leq u$, so $\Phi(k)$ is also a valid p-value.
+
+\medskip\noindent\textbf{Step 3: Summing over the family.}
+With $\NFA(k) = (n{-}4)\,\Phi(k)$:
+\[
+  \Prob[\NFA(k) \leq \eta]
+  = \Prob\!\Big[\Phi(k) \leq \frac{\eta}{n{-}4}\Big]
+  \leq \frac{\eta}{n{-}4}.
+\]
+Summing over all $n - 4$ values of $k$:
+\[
+  \E\!\Big[\#\{k : \NFA(k) \leq \eta\}\Big]
+  = \sum_{k=5}^{n} \Prob[\NFA(k) \leq \eta]
+  \leq (n{-}4) \cdot \frac{\eta}{n{-}4}
+  = \eta.
+  \qedhere
+\]
+\end{proof}
+
+% ═══════════════════════════════════════════════════════════════════════════
+\section{Algorithm}\label{sec:algorithm}
+
+\subsection{ORSA loop}
+The ORSA algorithm (\Cref{alg:orsa}) combines RANSAC-style random
+sampling with a-contrario model selection.
+
+\begin{algorithm}[htbp]
+\caption{ORSA for homography estimation}\label{alg:orsa}
+\begin{algorithmic}[1]
+\Require $n$ correspondences $(x_i, x'_i)$, image dimensions, max iterations $T$
+\Ensure Best homography $H^*$, inlier mask, $\NFA^*$
+\State Precompute $\log_{10}\binom{n}{k}$ for $k=0,\ldots,n$ and
+       $\log_{10}\binom{m}{4}$ for $m=0,\ldots,n$
+\State $\NFA^* \gets +\infty$, $H^* \gets \texttt{None}$
+\For{$t = 1, \ldots, T$}
+  \State Draw 4 correspondences uniformly at random \label{line:sample}
+  \State Check degeneracy (collinearity, conditioning, orientation on sample)
+  \If{degenerate} \textbf{continue} \EndIf
+  \State Estimate $H$ by DLT with Hartley normalization
+  \State Check valid warp (corners map to reasonable locations)
+  \State Compute residuals $e_i$ and side indicators $s_i$ for all $n$ matches
+  \State Sort residuals: $e_{\sigma(1)} \leq \cdots \leq e_{\sigma(n)}$
+  \For{$k = 5, \ldots, n$}
+    \State $r_k^2 \gets e_{\sigma(k)}$,\quad
+           $\alpha_k \gets \pi\,r_k^2/(w_{s_k}h_{s_k})$
+    \State Compute $\log_{10}\NFA(k)$ via \eqref{eq:lognfa}
+  \EndFor
+  \State $k^* \gets \argmin_k \NFA(k)$
+  \If{$\NFA(k^*) < \NFA^*$}
+    \State Update $H^*$, inlier mask, $\NFA^*$
+    \State Update adaptive iteration count based on inlier ratio
+  \EndIf
+\EndFor
+\State \textbf{Refinement:} Iteratively refit $H^*$ on inliers (DLT),
+       recompute NFA, until convergence
+\State \textbf{Polish:} Levenberg-Marquardt optimization on inlier
+       correspondences
+\State \Return $H^*$, inlier mask, $\NFA^*$
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Computational complexity}
+For each RANSAC iteration:
+\begin{itemize}[nosep]
+  \item DLT estimation from 4 points: $O(1)$ (fixed size).
+  \item Computing $n$ residuals: $O(n)$.
+  \item Sorting: $O(n \log n)$.
+  \item NFA evaluation for all $k$: $O(n)$ (using precomputed tables).
+\end{itemize}
+Total per iteration: $O(n \log n)$. With $T$ iterations, the overall
+complexity is $O(Tn\log n)$. In practice, adaptive stopping reduces $T$
+significantly when the inlier ratio is high.
+
+\subsection{Degeneracy handling}\label{sec:degeneracy}
+Several checks prevent degenerate or physically implausible homographies
+from contaminating the NFA scoring:
+
+\begin{enumerate}[nosep]
+  \item \textbf{Collinearity:} Reject samples where any 3 of the 4 points
+        are collinear (triangle area below threshold).
+  \item \textbf{Conditioning:} Reject homographies with condition number
+        $> 10$ on the normalized $H$ matrix (checked before denormalization
+        in DLT), following the IPOL reference.
+  \item \textbf{Orientation preservation:} Check that $w' = H_{31}x +
+        H_{32}y + H_{33} > 0$ at the \emph{sample points only}
+        (not all points, since outliers may legitimately violate this).
+        Correspondences with $w' \leq 0$ receive infinite error in the
+        symmetric transfer error computation.
+  \item \textbf{Valid warp:} Verify that the four image corners map to
+        finite, reasonable locations (area ratio within $[1/100, 100]$).
+\end{enumerate}
+
+\subsection{Refinement and non-maxima suppression}\label{sec:refinement}
+Once the best model is found, ORSA applies two refinement stages:
+\begin{enumerate}[nosep]
+  \item \textbf{Iterative DLT refit:} Refit the homography on the current
+        inlier set, recompute residuals and NFA, update the inlier set.
+        Repeat until the NFA no longer improves (typically 2--5 iterations).
+  \item \textbf{Levenberg-Marquardt:} Minimize the forward transfer error
+        on inliers using LM optimization with 8 free parameters
+        ($H_{33}=1$ fixed). Accept only if NFA does not worsen.
+\end{enumerate}
+
+For the exclusion principle: since we estimate a single global homography,
+the inlier/outlier partition itself serves as the non-redundancy mechanism.
+In the multi-structure setting (multiple planes), one would apply ORSA
+iteratively, removing detected inliers after each round.
+
+% ═══════════════════════════════════════════════════════════════════════════
+\section{Experiments}\label{sec:experiments}
+
+We conduct six experiments to validate the implementation and explore the
+method's behavior.
+
+\subsection{Experiment 1: Null model validation}\label{sec:exp_null}
+
+\paragraph{Setup.}
+We generate purely random correspondences (no true homography) with
+$n \in \{50, 100, 200, 500\}$ matches, running 50 trials per condition
+with 500 ORSA iterations each.
+
+\paragraph{Results.}
+\Cref{tab:null_model} shows the false alarm rates. Out of 200 total
+trials, only 1 produced a (marginal) false detection
+($\log_{10}\NFA = -0.67$ at $n=50$). All other trials returned
+$\log_{10}\NFA = 0$ (no detection).
+
+\begin{table}[htbp]
+\centering
+\caption{Null model validation: false alarm rate on pure random data.}
+\label{tab:null_model}
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+$n$ (outliers) & 50 & 100 & 200 & 500 \\
+\midrule
+False alarms / 50 trials & 1 & 0 & 0 & 0 \\
+Mean $\log_{10}\NFA$ & $-0.01$ & $0.0$ & $0.0$ & $0.0$ \\
+Min $\log_{10}\NFA$ & $-0.67$ & $0.0$ & $0.0$ & $0.0$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+When no candidate model achieves $\NFA < 1$, the algorithm returns
+$\log_{10}\NFA = 0$ (i.e.\ $\NFA = 1$, ``no detection''), which explains
+the concentration at~0 in \Cref{fig:null_model}. This confirms the
+a-contrario guarantee: the expected number of false alarms is at most~1
+(\Cref{thm:nfa}), and our empirical rate (0.5\%) is well within this bound.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.7\textwidth]{figures/null_model.png}
+  \caption{Distribution of $\log_{10}\NFA$ under the null model.
+  Nearly all values are at 0 (no detection), validating the
+  a-contrario false alarm control.}
+  \label{fig:null_model}
+\end{figure}
+
+\subsection{Experiment 2: Simple synthetic case}\label{sec:exp_synthetic}
+
+\paragraph{Setup.}
+We use a known mild-perspective homography
+$H_{\mathrm{true}}$ with $n=200$ total correspondences, Gaussian noise
+$\sigma=1$ pixel on inlier projections, and varying outlier ratios from
+10\% to 90\%. We run 10 trials per condition.
+
+\paragraph{Results.}
+\Cref{tab:synthetic} summarizes the results. Precision and recall are
+reported \emph{conditional on detection} (i.e.\ averaged only over
+trials where $\NFA < 1$); undetected trials contribute to the detection
+rate but not to the precision/recall columns. ORSA achieves perfect
+precision (no false inliers) at all outlier ratios, and 100\% detection
+rate up to 70\% outliers. At 90\% outliers (only 20 inliers among 200),
+detection drops to 30\%, which is expected given the extremely low
+probability of sampling 4 inliers from such a small pool.
+
+\begin{table}[htbp]
+\centering
+\caption{Synthetic experiments: performance vs.\ outlier ratio.}
+\label{tab:synthetic}
+\begin{tabular}{@{}lccccc@{}}
+\toprule
+Outlier ratio & 10\% & 30\% & 50\% & 70\% & 90\% \\
+\midrule
+Detection rate & 10/10 & 10/10 & 10/10 & 10/10 & 3/10 \\
+Precision & 1.00 & 1.00 & 1.00 & 1.00 & 1.00 \\
+Recall & 0.98 & 0.98 & 0.98 & 0.98 & 0.98 \\
+Mean $\log_{10}\NFA$ & $-666$ & $-486$ & $-318$ & $-172$ & $-40$ \\
+Corner error (px) & 0.44 & 0.41 & 0.48 & 0.77 & 1.03 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.85\textwidth]{figures/simple_synthetic.png}
+  \caption{Left: precision and recall vs.\ outlier ratio.
+  Right: homography accuracy (corner error) vs.\ outlier ratio.}
+  \label{fig:synthetic}
+\end{figure}
+
+\subsection{Experiment 3: Real images --- easy case}\label{sec:exp_easy}
+A synthetic textured image pair with a mild perspective homography
+yields 79 SIFT matches. ORSA finds 66 inliers (83.5\%) with
+$\log_{10}\NFA = -270$, mean reprojection error 0.49\,px, in 8.4\,ms
+(\Cref{fig:example_matches}a). The extremely negative NFA confirms a
+very strong, unambiguous detection.
+
+\subsection{Experiment 4: Real images --- hard case}\label{sec:exp_hard}
+A harder pair with strong perspective yields 37 SIFT matches. ORSA
+still detects 27 inliers (73\%) with $\log_{10}\NFA = -84$ and mean
+reprojection error 1.56\,px (\Cref{fig:example_matches}b). The larger
+threshold $r$ (2.33 vs.\ 1.38\,px) reflects the increased geometric
+distortion.
+
+\subsection{Experiment 5: Failure cases}\label{sec:exp_failure}
+We test three failure scenarios:
+
+\paragraph{5a: Pure random matches (300 points).}
+ORSA correctly returns no detection ($\log_{10}\NFA = 0$).
+
+\paragraph{5b: Multi-structure (two conflicting homographies).}
+Two groups of 80 inliers (from different $H$'s) plus 50 outliers
+(195 total). ORSA detects the dominant structure (76 inliers,
+$\log_{10}\NFA = -196$). The second structure's inliers are treated
+as outliers---a correct behavior for single-model ORSA. Recovering
+both would require iterative application (exclusion principle).
+
+\paragraph{5c: Extreme outlier ratio (5 inliers / 300 outliers).}
+Over 20 trials, \emph{zero} detections occur. With 98.4\% outliers and
+only $\binom{5}{4}/\binom{305}{4} \approx 7\times10^{-9}$ probability
+of drawing a clean sample, this is an expected failure.
+
+\subsection{Experiment 6: Sensitivity analysis}\label{sec:exp_sensitivity}
+
+\paragraph{Iteration budget.}
+\Cref{tab:sensitivity_iter} shows that results converge by $\sim$500
+iterations; going from 500 to 5000 produces identical log-NFA and
+corner error.
+
+\begin{table}[htbp]
+\centering
+\caption{Sensitivity to iteration budget (50\% outliers, $n=200$).}
+\label{tab:sensitivity_iter}
+\begin{tabular}{@{}lccccc@{}}
+\toprule
+max\_iter & 50 & 100 & 500 & 1000 & 5000 \\
+\midrule
+Mean $\log_{10}\NFA$ & $-316$ & $-316$ & $-316$ & $-316$ & $-316$ \\
+Corner error (px) & 0.61 & 0.57 & 0.58 & 0.58 & 0.58 \\
+Runtime (ms) & 17 & 21 & 22 & 23 & 23 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Seed stability.}
+Across 20 random seeds on identical data, $\log_{10}\NFA$ varies by
+only 3.4 units ($-315$ to $-319$) and the inlier count varies by at most
+5 (95--100 out of 100 true inliers), demonstrating excellent stability.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.85\textwidth]{figures/sensitivity.png}
+  \caption{Left: corner error vs.\ max iterations. Right: NFA stability
+  across 20 random seeds.}
+  \label{fig:sensitivity}
+\end{figure}
+
+% ═══════════════════════════════════════════════════════════════════════════
+\section{Discussion}\label{sec:discussion}
+
+\subsection{Limitations}
+\begin{enumerate}[nosep]
+  \item \textbf{Extreme outlier ratios ($>$90\%):} The probability of
+        sampling a clean 4-point sample becomes vanishingly small,
+        causing detection failure even when a true model exists.
+  \item \textbf{Multi-structure scenes:} ORSA detects only the dominant
+        homography. Scenes with multiple planes (e.g.\ buildings with
+        multiple facades) require iterative application with the exclusion
+        principle.
+  \item \textbf{Non-planar scenes:} When the scene is not planar and the
+        camera motion is not a pure rotation, no single homography
+        correctly relates the two views. ORSA may find a partial model
+        for the dominant plane, but with degraded NFA.
+  \item \textbf{Repetitive textures:} Scenes with strong repetitive
+        patterns (e.g.\ building facades with identical windows) generate
+        many ambiguous correspondences that may accidentally align with a
+        false model.
+  \item \textbf{Forward-only LM refinement:} Our current Levenberg-Marquardt
+        step minimizes forward transfer error rather than the symmetric
+        error used in the NFA computation, introducing a minor inconsistency.
+\end{enumerate}
+
+\subsection{Possible improvements and extensions}
+\begin{enumerate}[nosep]
+  \item \textbf{Symmetric LM refinement:} Minimize the same symmetric
+        transfer error used in NFA scoring for full consistency.
+  \item \textbf{PROSAC-style guided sampling:} Instead of uniform sampling,
+        prioritize correspondences with better matching scores, as in
+        PROSAC~\cite{chum2005}, to find good models faster.
+  \item \textbf{Multi-model detection:} Apply the exclusion principle:
+        after detecting one homography, remove its inliers and re-run
+        ORSA on the remainder. This enables multi-plane detection.
+  \item \textbf{Fundamental matrix estimation:} The a-contrario framework
+        extends naturally to the fundamental matrix (7-point algorithm,
+        $p=7$), enabling robust epipolar geometry estimation for non-planar
+        scenes.
+  \item \textbf{Local optimization:} Add an inner LO-RANSAC~\cite{chum2003}
+        step that refits on inliers \emph{within} the RANSAC loop, rather
+        than only at the end.
+  \item \textbf{Adaptive alpha per correspondence:} Use the actual
+        uncertainty of each feature match (e.g.\ from the SIFT scale) to
+        define a per-point $\alpha_i$, giving a tighter NFA bound.
+\end{enumerate}
+
+% ═══════════════════════════════════════════════════════════════════════════
+\section{Implementation Details}\label{sec:implementation}
+
+Our implementation is structured as follows:
+
+\begin{itemize}[nosep]
+  \item \texttt{src/nfa.py}: Log-space NFA computation with precomputed
+        binomial coefficient tables. Uses the correct formula
+        $\binom{n}{k}\binom{k}{4}$ (not $\binom{n-4}{k-4}\binom{k}{4}$).
+  \item \texttt{src/homography.py}: DLT with Hartley normalization,
+        symmetric transfer error, LM refinement.
+  \item \texttt{src/degeneracy.py}: Collinearity, conditioning (threshold
+        on normalized $H$, cond $\leq 10$), orientation preservation
+        (sample-only check), valid warp.
+  \item \texttt{src/orsa.py}: Main ORSA loop with adaptive stopping,
+        focused sampling in reserved iterations, iterative refinement.
+  \item \texttt{src/matching.py}: SIFT/ORB detection with Lowe's ratio
+        test; duplicate removal only for exact pairs (not shared endpoints).
+  \item \texttt{experiments/}: Synthetic data generation and 6 experiment
+        types with JSON + PNG output.
+  \item \texttt{tests/}: 46 unit tests covering all modules.
+\end{itemize}
+
+Key design decisions:
+\begin{itemize}[nosep]
+  \item \textbf{mult\_error = 1.0}: Since $\alpha = \pi r^2/(wh)$
+        and our residuals $e_i$ are already squared distances ($e_i = r^2$),
+        we use $\log_{10}\alpha = \log_{10}(\pi/(wh)) + 1.0 \cdot \log_{10}(e)$
+        (not $0.5$, which would give $\sqrt{e}$ and incorrect
+        dimensionality).
+  \item \textbf{max\_threshold = diagonal$^2$}: Caps errors at the
+        squared image diagonal to prevent counting geometrically impossible
+        inliers.
+  \item \textbf{Best model tracking}: We track the best model overall
+        (minimum NFA, even if $>1$) to guide focused sampling, but only
+        declare a detection when $\NFA < 1$.
+\end{itemize}
+
+% ═══════════════════════════════════════════════════════════════════════════
+\section{Use of AI Tools}\label{sec:ai}
+
+AI tools (Claude) were used in this project for the following tasks:
+\begin{itemize}[nosep]
+  \item \textbf{Code structure and glue code:} Setting up the modular
+        project architecture, writing interfaces between modules,
+        plotting code, and test scaffolding.
+  \item \textbf{Debugging and code review:} Identifying discrepancies
+        between the implementation and the paper's formulas (notably the
+        NFA combinatorial factor, orientation-preserving check scope,
+        and conditioning threshold).
+  \item \textbf{Report structure:} Organizing the LaTeX document
+        structure and formatting.
+\end{itemize}
+The core algorithmic logic (DLT, NFA computation, ORSA loop, degeneracy
+checks) was implemented based on direct reading of the IPOL
+paper~\cite{moisan2012}. All formulas and proofs were verified manually
+against the course material.
+
+% ═══════════════════════════════════════════════════════════════════════════
+\section{Conclusion}
+
+We presented a complete implementation of the ORSA algorithm for
+a-contrario homography registration. Our experiments confirm the
+theoretical guarantees: near-zero false alarm rate on random data,
+robust detection up to 70\% outliers with perfect precision, graceful
+degradation beyond, and stability across random seeds and iteration
+budgets. The a-contrario framework provides a principled, parameter-free
+alternative to fixed-threshold RANSAC, with the NFA serving as both a
+model selection criterion and a meaningfulness measure.
+
+% ═══════════════════════════════════════════════════════════════════════════
+\bibliographystyle{plainnat}
+\begin{thebibliography}{10}
+
+\bibitem[Moisan et~al.(2012)]{moisan2012}
+L.~Moisan, P.~Moulon, and P.~Monasse.
+\newblock Automatic homographic registration of a pair of images, with a
+  contrario elimination of outliers.
+\newblock \emph{Image Processing On Line}, 2:56--73, 2012.
+
+\bibitem[Desolneux et~al.(2000)]{desolneux2000}
+A.~Desolneux, L.~Moisan, and J.-M. Morel.
+\newblock Meaningful alignments.
+\newblock \emph{International Journal of Computer Vision}, 40(1):7--23, 2000.
+
+\bibitem[Desolneux et~al.(2008)]{desolneux2008}
+A.~Desolneux, L.~Moisan, and J.-M. Morel.
+\newblock \emph{From Gestalt Theory to Image Analysis: A Probabilistic
+  Approach}.
+\newblock Springer, 2008.
+
+\bibitem[Lowe(2004)]{lowe2004}
+D.~G. Lowe.
+\newblock Distinctive image features from scale-invariant keypoints.
+\newblock \emph{International Journal of Computer Vision}, 60(2):91--110, 2004.
+
+\bibitem[Fischler and Bolles(1981)]{fischler1981}
+M.~A. Fischler and R.~C. Bolles.
+\newblock Random sample consensus: a paradigm for model fitting with
+  applications to image analysis and automated cartography.
+\newblock \emph{Communications of the ACM}, 24(6):381--395, 1981.
+
+\bibitem[Hartley and Zisserman(2003)]{hartley2003}
+R.~Hartley and A.~Zisserman.
+\newblock \emph{Multiple View Geometry in Computer Vision}.
+\newblock Cambridge University Press, 2nd edition, 2003.
+
+\bibitem[Chum and Matas(2005)]{chum2005}
+O.~Chum and J.~Matas.
+\newblock Matching with {PROSAC}---progressive sample consensus.
+\newblock In \emph{IEEE CVPR}, pages 220--226, 2005.
+
+\bibitem[Chum et~al.(2003)]{chum2003}
+O.~Chum, J.~Matas, and J.~Kittler.
+\newblock Locally optimized {RANSAC}.
+\newblock In \emph{DAGM}, pages 236--243, 2003.
+
+\end{thebibliography}
+
+\end{document}

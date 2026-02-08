@@ -100,16 +100,17 @@ def detect_and_match(
             method=method,
         )
 
-    # Remove duplicates: keep best match per keypoint
-    seen1 = {}
-    seen2 = {}
+    # Remove exact duplicate correspondences (same pair of endpoints).
+    # The IPOL paper warns only about exact duplicates, not shared single
+    # endpoints, which occur legitimately in repetitive textures.
+    seen_pairs = set()
     unique_matches = []
     # Sort by distance (best first)
     good_matches = sorted(good_matches, key=lambda m: m.distance)
     for m in good_matches:
-        if m.queryIdx not in seen1 and m.trainIdx not in seen2:
-            seen1[m.queryIdx] = True
-            seen2[m.trainIdx] = True
+        pair = (m.queryIdx, m.trainIdx)
+        if pair not in seen_pairs:
+            seen_pairs.add(pair)
             unique_matches.append(m)
 
     # Extract point coordinates

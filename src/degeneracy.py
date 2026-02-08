@@ -33,15 +33,15 @@ def check_collinearity(pts: np.ndarray, threshold: float = 1e-4) -> bool:
     return False
 
 
-def check_conditioning(H: np.ndarray, threshold: float = 1e-6) -> bool:
+def check_conditioning(H: np.ndarray, threshold: float = 0.1) -> bool:
     """Check that H is well-conditioned.
 
     Parameters
     ----------
     H : (3, 3) homography matrix
     threshold : minimum acceptable inverse condition number.
-        Set low (1e-6) because denormalized H can have large condition
-        numbers even for valid homographies with significant translations.
+        The IPOL reference rejects homographies with condition number
+        above ~10 (inv_cond < 0.1).
 
     Returns
     -------
