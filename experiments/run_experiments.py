@@ -424,8 +424,10 @@ def run_failure_case(output_dir: str, data_dir: str):
         'log_nfa': float(result.log_nfa), 'detected': result.log_nfa < 0,
     }, os.path.join(output_dir, 'failure_random.json'))
 
-    # Sub-experiment 5b: two conflicting homographies
-    print("  5b: Two conflicting homographies (non-planar)")
+    # Sub-experiment 5b: two conflicting homographies (multi-structure)
+    # Note: ORSA correctly detects the dominant plane — this is a *success*,
+    # not a failure. We keep it to demonstrate robustness to mixed models.
+    print("  5b: Multi-structure — two conflicting homographies")
     H1 = np.array([[1.05, 0.08, 15], [-0.03, 0.98, 10], [0.0001, 0.00005, 1]])
     H2 = np.array([[0.95, -0.1, -20], [0.06, 1.05, 15], [-0.0002, 0.0001, 1]])
     pts1_a, pts2_a, _ = generate_synthetic_matches(
@@ -444,14 +446,49 @@ def run_failure_case(output_dir: str, data_dir: str):
     )
     print(
         f"    log10(NFA) = {result.log_nfa:.2f}, "
-        f"inliers = {result.n_inliers}/{len(pts1_mixed)}"
+        f"inliers = {result.n_inliers}/{len(pts1_mixed)}, "
+        f"(ORSA detects dominant plane)"
     )
     save_result({
-        'experiment': 'failure_two_planes',
+        'experiment': 'multi_structure',
         'n_matches': len(pts1_mixed),
         'log_nfa': float(result.log_nfa),
         'n_inliers': result.n_inliers,
-    }, os.path.join(output_dir, 'failure_two_planes.json'))
+    }, os.path.join(output_dir, 'multi_structure.json'))
+
+    # Sub-experiment 5c: extreme outlier ratio (true failure case)
+    # Very few inliers swamped by outliers — detection should fail.
+    print("  5c: Extreme outlier ratio (5 inliers / 300 outliers)")
+    n_trials_failure = 20
+    n_detected = 0
+    log_nfas_failure = []
+    H_fail = make_test_homographies(img_shape)['perspective_mild']
+    for trial in range(n_trials_failure):
+        pts1_f, pts2_f, gt_f = generate_synthetic_matches(
+            n_inliers=5, n_outliers=300,
+            H_true=H_fail, noise_sigma=2.0,
+            img_shape=img_shape, seed=trial * 31 + 7777,
+        )
+        result_f = orsa_homography(
+            pts1_f, pts2_f, img_shape, img_shape,
+            max_iter=1000, seed=trial,
+        )
+        log_nfas_failure.append(result_f.log_nfa)
+        if result_f.log_nfa < 0:
+            n_detected += 1
+    print(
+        f"    Detected: {n_detected}/{n_trials_failure}, "
+        f"mean log_NFA = {np.mean(log_nfas_failure):.2f}, "
+        f"min log_NFA = {np.min(log_nfas_failure):.2f}"
+    )
+    save_result({
+        'experiment': 'failure_extreme_outliers',
+        'n_inliers_true': 5,
+        'n_outliers': 300,
+        'n_trials': n_trials_failure,
+        'n_detected': n_detected,
+        'log_nfas': [float(x) for x in log_nfas_failure],
+    }, os.path.join(output_dir, 'failure_extreme_outliers.json'))
 
     # Real failure images if available
     pairs = _find_image_pairs(data_dir, prefix='failure')
@@ -670,7 +707,7 @@ def _compute_nfa_curve(result, match_result, img1, img2):
         sorted_errors, sorted_sides, logalpha0,
         n, sample_size, 1,
         log_combi_n, log_combi_k,
-        mult_error=0.5,
+        mult_error=1.0,
     )
     return sorted_errors, log_nfas
 
