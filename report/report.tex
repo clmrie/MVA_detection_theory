@@ -149,7 +149,8 @@ the probability that a random correspondence appears as an inlier
 \end{equation}
 since the set of points within distance $r$ of a given point
 is contained in a disk of area $\pi r^2$, and the image area
-is $wh$.
+is $wh$. In practice, we clip $\alpha(r) = \min(1,\, \pi r^2/(wh))$
+to handle large thresholds and boundary effects.
 
 % ═══════════════════════════════════════════════════════════════════════════
 \section{NFA Definition}\label{sec:nfa}
@@ -244,41 +245,46 @@ detections (values of $k$ with $\NFA(k) \leq 1$) is at most~1.
 \end{theorem}
 
 \begin{proof}
-Under $\mathcal{H}_0$, the correspondences are independent and each
-$\alpha_i = \pi r_i^2/(wh)$ satisfies
+Under $\mathcal{H}_0$, the $n$ correspondences are independent, and
+for each correspondence $\alpha_i = \pi r_i^2/(wh)$ satisfies
 $\Prob[\alpha_i \leq u] \leq u$ for $u \in [0,1]$ (since $x'_i$ is
-uniform over the image). Let $\alpha_{(k)}$ denote the $k$-th order
-statistic (i.e.\ $\alpha$ evaluated at the $k$-th smallest residual).
-The proof proceeds in three steps.
+uniform over the image).
 
-\medskip\noindent\textbf{Step 1: Order-statistic p-value.}
-$\binom{n}{k}\alpha_{(k)}^{k}$ is a valid p-value: for any $u \in [0,1]$,
+\medskip\noindent\textbf{Step 1: Binomial tail bound.}
+Fix a 4-point subset $S$ and the homography $H$ it generates.
+Condition on $S$: the remaining $n - 4$ correspondences are still
+i.i.d.\ under $\mathcal{H}_0$, each with
+$\Prob[\text{inlier at threshold } r] \leq \alpha(r)$.
+For any fixed $\alpha \in [0,1]$, the probability that at least $k - 4$
+of the $n - 4$ non-sample correspondences are inliers is:
 \[
-  \Prob\!\Big[\binom{n}{k}\alpha_{(k)}^k \leq u\Big]
-  = \Prob\!\Big[\alpha_{(k)} \leq \Big(\frac{u}{\binom{n}{k}}\Big)^{\!1/k}\Big]
-  \leq \binom{n}{k}\Big(\frac{u}{\binom{n}{k}}\Big)
-  = u,
+  \Prob[\mathrm{Bin}(n{-}4,\,\alpha) \geq k{-}4]
+  \leq \binom{n{-}4}{k{-}4}\,\alpha^{k-4}
+  \leq \binom{n}{k}\,\alpha^{k-4},
 \]
-where we used the standard bound: $\Prob[\alpha_{(k)} \leq t]
-= \Prob[\text{at least }k\text{ of }n\text{ values} \leq t]
-\leq \binom{n}{k} t^k$ (dominant term of the binomial tail).
+where the first inequality is the dominant-term binomial tail bound,
+and the second uses $\binom{n-4}{k-4} \leq \binom{n}{k}$.
 
-\medskip\noindent\textbf{Step 2: Our formula is more conservative.}
-For $\alpha_{(k)} \in [0,1]$ and $k \geq 5$, we have
-$\alpha_{(k)}^{-4} \geq 1$ and $\binom{k}{4} \geq 1$, so:
+\medskip\noindent\textbf{Step 2: Union bound over generating subsets.}
+For fixed $k$ and threshold $\alpha$, there are at most $\binom{k}{4}$
+ways to choose a generating 4-point subset among the $k$ inliers.
+Taking a union bound:
 \[
-  \binom{n}{k}\binom{k}{4}\,\alpha_{(k)}^{k-4}
-  = \underbrace{\binom{n}{k}\alpha_{(k)}^k}_{\text{valid p-value}}
-  \;\times\; \underbrace{\binom{k}{4}\,\alpha_{(k)}^{-4}}_{\geq\, 1}
-  \;\geq\; \binom{n}{k}\alpha_{(k)}^k.
+  \Prob_{\mathcal{H}_0}(E_k)
+  \leq \binom{k}{4}\,\binom{n}{k}\,\alpha^{k-4}
+  \;=:\; \Phi(k).
 \]
-Therefore, defining
-$\Phi(k) = \binom{n}{k}\binom{k}{4}\,\alpha_{(k)}^{k-4}$, we have
-$\Prob[\Phi(k) \leq u] \leq \Prob[\binom{n}{k}\alpha_{(k)}^k \leq u]
-\leq u$, so $\Phi(k)$ is also a valid p-value.
+Since $\Phi(k)$ upper-bounds a probability, it is a valid p-value:
+$\Prob[\Phi(k) \leq u] \leq u$ for $u \in [0,1]$.
+(This can also be verified directly: $\Phi(k) \leq u$ implies
+$\alpha \leq (u/(\binom{k}{4}\binom{n}{k}))^{1/(k-4)}$, so
+$\Prob[\Phi(k) \leq u]
+\leq \binom{n}{k}\bigl(u/(\binom{k}{4}\binom{n}{k})\bigr)^{k/(k-4)}
+\leq u$,
+since $\binom{k}{4}^{k/(k-4)} \binom{n}{k}^{4/(k-4)} \geq 1$.)
 
 \medskip\noindent\textbf{Step 3: Summing over the family.}
-With $\NFA(k) = (n{-}4)\,\Phi(k)$:
+With $\NFA(k) = (n{-}4)\,\Phi(k)$ and $|\mathcal{T}| = n - 4$ tests:
 \[
   \Prob[\NFA(k) \leq \eta]
   = \Prob\!\Big[\Phi(k) \leq \frac{\eta}{n{-}4}\Big]
@@ -319,7 +325,7 @@ sampling with a-contrario model selection.
   \State Sort residuals: $e_{\sigma(1)} \leq \cdots \leq e_{\sigma(n)}$
   \For{$k = 5, \ldots, n$}
     \State $r_k^2 \gets e_{\sigma(k)}$,\quad
-           $\alpha_k \gets \pi\,r_k^2/(w_{s_k}h_{s_k})$
+           $\alpha_k \gets \pi\,r_k^2/(w_{s_{\sigma(k)}}h_{s_{\sigma(k)}})$
     \State Compute $\log_{10}\NFA(k)$ via \eqref{eq:lognfa}
   \EndFor
   \State $k^* \gets \argmin_k \NFA(k)$
