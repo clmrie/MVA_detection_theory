@@ -1,0 +1,29 @@
+{
+  "experiment": "failure_extreme_outliers",
+  "n_inliers_true": 5,
+  "n_outliers": 300,
+  "n_trials": 20,
+  "n_detected": 0,
+  "log_nfas": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+  ]
+}
