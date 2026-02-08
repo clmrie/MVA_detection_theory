@@ -67,9 +67,7 @@ def save_result(result_dict: dict, path: str):
     print(f"  Saved: {path}")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Experiment 1: Null Model Validation
-# ─────────────────────────────────────────────────────────────────────────────
 
 def run_null_model(output_dir: str):
     """Verify that ORSA does NOT detect homographies in purely random matches.
@@ -134,9 +132,7 @@ def run_null_model(output_dir: str):
     print(f"  Saved: {os.path.join(output_dir, 'null_model.png')}")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Experiment 2: Simple Synthetic Case
-# ─────────────────────────────────────────────────────────────────────────────
 
 def run_simple_synthetic(output_dir: str):
     """Synthetic homography with varying outlier ratios.
@@ -250,9 +246,7 @@ def run_simple_synthetic(output_dir: str):
     print(f"  Saved: {os.path.join(output_dir, 'simple_synthetic.png')}")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Experiment 3: Real Images — Easy Case
-# ─────────────────────────────────────────────────────────────────────────────
 
 def run_real_easy(output_dir: str, data_dir: str):
     """Real image pair where a homography is clearly valid."""
@@ -326,9 +320,7 @@ def run_real_easy(output_dir: str, data_dir: str):
         }, os.path.join(output_dir, f'real_easy_{name}.json'))
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Experiment 4: Real Images — Hard Case
-# ─────────────────────────────────────────────────────────────────────────────
 
 def run_real_hard(output_dir: str, data_dir: str):
     """Real image pair with significant viewpoint change or many outliers."""
@@ -393,9 +385,7 @@ def run_real_hard(output_dir: str, data_dir: str):
         }, os.path.join(output_dir, f'real_hard_{name}.json'))
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Experiment 5: Failure Case
-# ─────────────────────────────────────────────────────────────────────────────
 
 def run_failure_case(output_dir: str, data_dir: str):
     """Cases where homography is NOT valid: non-planar, repeated textures, etc.
@@ -515,9 +505,7 @@ def run_failure_case(output_dir: str, data_dir: str):
         )
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Experiment 6: Sensitivity Analysis
-# ─────────────────────────────────────────────────────────────────────────────
 
 def run_sensitivity(output_dir: str):
     """Vary ORSA parameters and random seeds to assess stability."""
@@ -576,7 +564,7 @@ def run_sensitivity(output_dir: str):
         pts1, pts2, gt_mask = generate_synthetic_matches(
             n_inliers=n_inliers, n_outliers=n_outliers,
             H_true=H_true, noise_sigma=1.0,
-            img_shape=img_shape, seed=42,  # same data
+            img_shape=img_shape, seed=42,  
         )
         result = orsa_homography(
             pts1, pts2, img_shape, img_shape,
@@ -622,9 +610,7 @@ def run_sensitivity(output_dir: str):
     print(f"  Saved: {os.path.join(output_dir, 'sensitivity.png')}")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Helpers
-# ─────────────────────────────────────────────────────────────────────────────
 
 def _find_image_pairs(data_dir: str, prefix: str) -> list[tuple[str, str, str]]:
     """Find image pairs in data_dir with naming convention: {prefix}_1.jpg, {prefix}_2.jpg
@@ -713,9 +699,7 @@ def _compute_nfa_curve(result, match_result, img1, img2):
     return sorted_errors, log_nfas
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Main
-# ─────────────────────────────────────────────────────────────────────────────
 
 def main():
     parser = argparse.ArgumentParser(description='ORSA Homography Experiments')
