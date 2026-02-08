@@ -1,0 +1,187 @@
+"""
+Synthetic data generation for ORSA experiments.
+
+Generates point correspondences with known ground-truth homography,
+controlled noise levels, and configurable inlier/outlier ratios.
+"""
+
+import numpy as np
+
+
+def generate_synthetic_matches(
+    n_inliers: int,
+    n_outliers: int,
+    H_true: np.ndarray,
+    noise_sigma: float = 1.0,
+    img_shape: tuple = (480, 640),
+    seed: int | None = None,
+    margin: float = 20.0,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Generate synthetic point correspondences with known ground truth.
+
+    Parameters
+    ----------
+    n_inliers : number of inlier correspondences
+    n_outliers : number of outlier correspondences (random, independent)
+    H_true : (3, 3) ground-truth homography
+    noise_sigma : Gaussian noise std dev added to projected inlier points (pixels)
+    img_shape : (height, width) of both images
+    seed : random seed
+    margin : margin from image borders for point generation
+
+    Returns
+    -------
+    pts1 : (n, 2) points in image 1
+    pts2 : (n, 2) points in image 2
+    gt_mask : (n,) boolean, True = inlier
+    """
+    rng = np.random.default_rng(seed)
+    h, w = img_shape
+
+    pts1_list = []
+    pts2_list = []
+    gt_list = []
+
+    # Generate inliers
+    if n_inliers > 0:
+        # Random points in image 1
+        x1 = rng.uniform(margin, w - margin, n_inliers)
+        y1 = rng.uniform(margin, h - margin, n_inliers)
+        inlier_pts1 = np.column_stack([x1, y1])
+
+        # Project through H_true
+        pts1_h = np.column_stack([inlier_pts1, np.ones(n_inliers)])
+        proj = (H_true @ pts1_h.T).T
+        proj_xy = proj[:, :2] / proj[:, 2:3]
+
+        # Add noise
+        noise = rng.normal(0, noise_sigma, (n_inliers, 2))
+        inlier_pts2 = proj_xy + noise
+
+        # Filter out points that fall outside image bounds
+        valid = (
+            (inlier_pts2[:, 0] >= 0) & (inlier_pts2[:, 0] < w)
+            & (inlier_pts2[:, 1] >= 0) & (inlier_pts2[:, 1] < h)
+            & (proj[:, 2] > 0)  # orientation preserving
+        )
+        pts1_list.append(inlier_pts1[valid])
+        pts2_list.append(inlier_pts2[valid])
+        gt_list.append(np.ones(np.sum(valid), dtype=bool))
+
+    # Generate outliers (random, independent in both images)
+    if n_outliers > 0:
+        outlier_pts1 = np.column_stack([
+            rng.uniform(margin, w - margin, n_outliers),
+            rng.uniform(margin, h - margin, n_outliers),
+        ])
+        outlier_pts2 = np.column_stack([
+            rng.uniform(margin, w - margin, n_outliers),
+            rng.uniform(margin, h - margin, n_outliers),
+        ])
+        pts1_list.append(outlier_pts1)
+        pts2_list.append(outlier_pts2)
+        gt_list.append(np.zeros(n_outliers, dtype=bool))
+
+    # Concatenate and shuffle
+    pts1 = np.vstack(pts1_list) if pts1_list else np.zeros((0, 2))
+    pts2 = np.vstack(pts2_list) if pts2_list else np.zeros((0, 2))
+    gt_mask = np.concatenate(gt_list) if gt_list else np.zeros(0, dtype=bool)
+
+    perm = rng.permutation(len(pts1))
+    return pts1[perm], pts2[perm], gt_mask[perm]
+
+
+def make_test_homographies(img_shape: tuple = (480, 640)) -> dict[str, np.ndarray]:
+    """Return a dictionary of named test homographies.
+
+    All are designed to map points within the given image shape
+    to reasonable locations.
+    """
+    h, w = img_shape
+    cx, cy = w / 2, h / 2
+
+    homographies = {}
+
+    # Identity
+    homographies['identity'] = np.eye(3)
+
+    # Pure translation (50px right, 30px down)
+    homographies['translation'] = np.array([
+        [1, 0, 50],
+        [0, 1, 30],
+        [0, 0, 1],
+    ], dtype=float)
+
+    # Rotation 15 degrees around image center
+    theta = np.radians(15)
+    cos_t, sin_t = np.cos(theta), np.sin(theta)
+    # Translate center to origin, rotate, translate back
+    T_to_origin = np.array([[1, 0, -cx], [0, 1, -cy], [0, 0, 1]], dtype=float)
+    R = np.array([[cos_t, -sin_t, 0], [sin_t, cos_t, 0], [0, 0, 1]], dtype=float)
+    T_back = np.array([[1, 0, cx], [0, 1, cy], [0, 0, 1]], dtype=float)
+    homographies['rotation_15deg'] = T_back @ R @ T_to_origin
+
+    # Affine: scale + shear
+    homographies['affine'] = np.array([
+        [1.1, 0.1, 20],
+        [0.05, 0.95, -10],
+        [0, 0, 1],
+    ], dtype=float)
+
+    # Mild perspective
+    homographies['perspective_mild'] = np.array([
+        [1.05, 0.08, 15],
+        [-0.03, 0.98, 10],
+        [0.0001, 0.00005, 1],
+    ], dtype=float)
+
+    # Strong perspective
+    homographies['perspective_strong'] = np.array([
+        [0.9, 0.2, 30],
+        [-0.15, 1.1, -20],
+        [0.0005, 0.0003, 1],
+    ], dtype=float)
+
+    return homographies
+
+
+def evaluate_homography(
+    H_estimated: np.ndarray,
+    H_true: np.ndarray,
+    img_shape: tuple = (480, 640),
+) -> dict:
+    """Evaluate estimated homography against ground truth.
+
+    Returns
+    -------
+    dict with keys:
+        'corner_error_mean': mean reprojection error at image corners (pixels)
+        'corner_error_max': max reprojection error at image corners
+        'frobenius_error': ||H_est/||H_est|| - H_true/||H_true||||_F
+    """
+    h, w = img_shape
+    corners = np.array([[0, 0], [w, 0], [w, h], [0, h]], dtype=float)
+    corners_h = np.column_stack([corners, np.ones(4)])
+
+    # Project corners through both homographies
+    proj_true = (H_true @ corners_h.T).T
+    proj_true_xy = proj_true[:, :2] / proj_true[:, 2:3]
+
+    proj_est = (H_estimated @ corners_h.T).T
+    proj_est_xy = proj_est[:, :2] / proj_est[:, 2:3]
+
+    errors = np.sqrt(np.sum((proj_true_xy - proj_est_xy) ** 2, axis=1))
+
+    # Frobenius error (normalized)
+    H_true_norm = H_true / np.linalg.norm(H_true)
+    H_est_norm = H_estimated / np.linalg.norm(H_estimated)
+    # Handle sign ambiguity
+    frob1 = np.linalg.norm(H_est_norm - H_true_norm)
+    frob2 = np.linalg.norm(H_est_norm + H_true_norm)
+    frob_error = min(frob1, frob2)
+
+    return {
+        'corner_error_mean': float(np.mean(errors)),
+        'corner_error_max': float(np.max(errors)),
+        'frobenius_error': float(frob_error),
+    }

@@ -1,0 +1,6 @@
+{
+  "experiment": "failure_random",
+  "n_matches": 300,
+  "log_nfa": 0.0,
+  "detected": false
+}

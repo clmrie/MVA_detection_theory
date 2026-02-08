@@ -1,0 +1,730 @@
+{
+  "experiment": "simple_synthetic",
+  "H_true": [
+    [
+      1.05,
+      0.08,
+      15.0
+    ],
+    [
+      -0.03,
+      0.98,
+      10.0
+    ],
+    [
+      0.0001,
+      5e-05,
+      1.0
+    ]
+  ],
+  "noise_sigma": 1.0,
+  "results": [
+    {
+      "outlier_ratio": 0.1,
+      "n_inliers_true": 180,
+      "n_outliers": 20,
+      "trials": [
+        {
+          "precision": 1.0,
+          "recall": 0.9777777777777777,
+          "log_nfa": -659.2256501042181,
+          "n_inliers": 176,
+          "epsilon": 2.891724281579455,
+          "runtime": 0.010553121566772461,
+          "h_error": {
+            "corner_error_mean": 0.634743469236398,
+            "corner_error_max": 0.9515184509650143,
+            "frobenius_error": 0.010077592093466817
+          },
+          "detected": true
+        },
+        {
+          "precision": 1.0,
+          "recall": 0.9888888888888889,
+          "log_nfa": -653.746699924806,
+          "n_inliers": 178,
+          "epsilon": 3.2004685140703932,
+          "runtime": 0.01145792007446289,
+          "h_error": {
+            "corner_error_mean": 0.41338671567799623,
+            "corner_error_max": 0.665669120003103,
+            "frobenius_error": 0.004282649819976414
+          },
+          "detected": true
+        },
+        {
+          "precision": 1.0,
+          "recall": 1.0,
+          "log_nfa": -671.141361863614,
+          "n_inliers": 179,
+          "epsilon": 2.9662553396491824,
+          "runtime": 0.008540868759155273,
+          "h_error": {
+            "corner_error_mean": 0.32663074492841115,
+            "corner_error_max": 0.36415152859068844,
+            "frobenius_error": 0.0163016605787652
+          },
+          "detected": true
+        },
+        {
+          "precision": 1.0,
+          "recall": 0.9833333333333333,
+          "log_nfa": -659.7121867736829,
+          "n_inliers": 177,
+          "epsilon": 2.978231203475292,
+          "runtime": 0.009037017822265625,
+          "h_error": {
+            "corner_error_mean": 0.3552585510074001,
+            "corner_error_max": 0.5008427938087212,
+            "frobenius_error": 0.0020738752895376597
+          },
+          "detected": true
+        },
+        {
+          "precision": 1.0,
+          "recall": 0.9444444444444444,
+          "log_nfa": -674.3052557928505,
+          "n_inliers": 170,
+          "epsilon": 2.1286938876427675,
+          "runtime": 0.010044097900390625,
+          "h_error": {
+            "corner_error_mean": 0.37717516490465963,
+            "corner_error_max": 0.5632492026336114,
+            "frobenius_error": 0.004965977187753534
+          },
+          "detected": true
+        },
+        {
+          "precision": 1.0,
+          "recall": 1.0,
+          "log_nfa": -673.9284028064075,
+          "n_inliers": 179,
+          "epsilon": 2.912363361809002,
+          "runtime": 0.010010004043579102,
+          "h_error": {
+            "corner_error_mean": 0.6927267172520207,
+            "corner_error_max": 0.775944658765527,
+            "frobenius_error": 0.00658943126981746
+          },
+          "detected": true
+        },
+        {
+          "precision": 1.0,
+          "recall": 1.0,
+          "log_nfa": -671.2664543174712,
+          "n_inliers": 180,
+          "epsilon": 3.0421472349700514,
+          "runtime": 0.009491920471191406,
+          "h_error": {
+            "corner_error_mean": 0.41309143264861525,
+            "corner_error_max": 0.6780158427751596,
+            "frobenius_error": 0.009608777029316605
+          },
+          "detected": true
+        },
+        {
+          "precision": 1.0,
+          "recall": 0.9887640449438202,
+          "log_nfa": -657.0878865419265,
+          "n_inliers": 176,
+          "epsilon": 2.969847291938418,
+          "runtime": 0.00826120376586914,
+          "h_error": {
+            "corner_error_mean": 0.37634255363127184,
+            "corner_error_max": 0.4780737908616173,
+            "frobenius_error": 0.0060074276794759695
+          },
+          "detected": true
+        },
+        {
+          "precision": 1.0,
+          "recall": 0.9944444444444445,
+          "log_nfa": -677.1163276218399,
+          "n_inliers": 179,
+          "epsilon": 2.8337355698789835,
+          "runtime": 0.008696794509887695,
+          "h_error": {
+            "corner_error_mean": 0.32102490910658743,
+            "corner_error_max": 0.3501595774731284,
+            "frobenius_error": 0.016927196671250422
+          },
+          "detected": true
+        },
+        {
+          "precision": 1.0,
+          "recall": 0.9664804469273743,
+          "log_nfa": -663.0297515884425,
+          "n_inliers": 173,
+          "epsilon": 2.565525399612507,
+          "runtime": 0.008691072463989258,
+          "h_error": {
+            "corner_error_mean": 0.46111261482855614,
+            "corner_error_max": 1.0679811384343127,
+            "frobenius_error": 0.0027832163963627697
+          },
+          "detected": true
+        }
+      ]
+    },
+    {
+      "outlier_ratio": 0.3,
+      "n_inliers_true": 140,
+      "n_outliers": 60,
+      "trials": [
+        {
+          "precision": 1.0,
+          "recall": 0.9714285714285714,
+          "log_nfa": -480.99291066570976,
+          "n_inliers": 136,
+          "epsilon": 2.744208438939139,
+          "runtime": 0.011930227279663086,
+          "h_error": {
+            "corner_error_mean": 0.6824619413063493,
+            "corner_error_max": 1.2752005225635363,
+            "frobenius_error": 0.004394044431925548
+          },
+          "detected": true
+        },
+        {
+          "precision": 1.0,
+          "recall": 1.0,
+          "log_nfa": -490.06329735105015,
+          "n_inliers": 139,
+          "epsilon": 2.857023806752642,
+          "runtime": 0.011738061904907227,
+          "h_error": {
+            "corner_error_mean": 0.37212404994962195,
+            "corner_error_max": 0.5746312739361886,
+            "frobenius_error": 0.008004339318184136
+          },
+          "detected": true
+        },
+        {
+          "precision": 1.0,
+          "recall": 0.9785714285714285,
+          "log_nfa": -489.9883849585854,
+          "n_inliers": 137,
+          "epsilon": 2.6376031171958765,
+          "runtime": 0.012212991714477539,
+          "h_error": {
+            "corner_error_mean": 0.28805129928674755,
+            "corner_error_max": 0.5168008791588414,
+            "frobenius_error": 0.0033455145336103347
+          },
+          "detected": true
+        },
+        {
+          "precision": 1.0,
+          "recall": 0.9928571428571429,
+          "log_nfa": -482.22851571703217,
+          "n_inliers": 139,
+          "epsilon": 3.0412059871096178,
+          "runtime": 0.011172771453857422,
+          "h_error": {
+            "corner_error_mean": 0.3364645939794904,
+            "corner_error_max": 0.5123025131425527,
+            "frobenius_error": 0.0028569333863380578
+          },
+          "detected": true
+        },
+        {
+          "precision": 1.0,
+          "recall": 0.9785714285714285,
+          "log_nfa": -482.1890103906789,
+          "n_inliers": 137,
+          "epsilon": 2.821827128802227,
+          "runtime": 0.01458597183227539,
+          "h_error": {
+            "corner_error_mean": 0.38856350455192035,
+            "corner_error_max": 0.5974748661173837,
+            "frobenius_error": 0.001847112479295048
+          },
+          "detected": true
+        },
+        {
+          "precision": 1.0,
+          "recall": 0.9642857142857143,
+          "log_nfa": -480.3116213779756,
+          "n_inliers": 135,
+          "epsilon": 2.6557824837802904,
+          "runtime": 0.009432077407836914,
+          "h_error": {
+            "corner_error_mean": 0.4613276409634539,
+            "corner_error_max": 0.6429791532591868,
+            "frobenius_error": 0.018267646418767193
+          },
+          "detected": true
+        },
+        {
+          "precision": 1.0,
+          "recall": 0.9714285714285714,
+          "log_nfa": -476.38620764890635,
+          "n_inliers": 136,
+          "epsilon": 2.8567137698985055,
+          "runtime": 0.00998997688293457,
+          "h_error": {
+            "corner_error_mean": 0.2535100445755982,
+            "corner_error_max": 0.46726497116986215,
+            "frobenius_error": 0.0026430696962943547
+          },
+          "detected": true
+        },
+        {
+          "precision": 1.0,
+          "recall": 0.9496402877697842,
+          "log_nfa": -476.27613878049215,
+          "n_inliers": 132,
+          "epsilon": 2.4547283874015964,
+          "runtime": 0.012242794036865234,
+          "h_error": {
+            "corner_error_mean": 0.5857016485573657,
+            "corner_error_max": 0.8393911717669514,
+            "frobenius_error": 0.003927810220655591
+          },
+          "detected": true
+        },
+        {
+          "precision": 1.0,
+          "recall": 0.9642857142857143,
+          "log_nfa": -493.2265339946059,
+          "n_inliers": 135,
+          "epsilon": 2.370821967066295,
+          "runtime": 0.010457754135131836,
+          "h_error": {
+            "corner_error_mean": 0.32352185543425116,
+            "corner_error_max": 0.5055592586321491,
+            "frobenius_error": 0.00464580158385359
+          },
+          "detected": true
+        },
+        {
+          "precision": 1.0,
+          "recall": 1.0,
+          "log_nfa": -511.7935816476463,
+          "n_inliers": 140,
+          "epsilon": 2.4568543816403037,
+          "runtime": 0.01153421401977539,
+          "h_error": {
+            "corner_error_mean": 0.42132300317790605,
+            "corner_error_max": 0.721796437629367,
+            "frobenius_error": 0.02277673877967409
+          },
+          "detected": true
+        }
+      ]
+    },
+    {
+      "outlier_ratio": 0.5,
+      "n_inliers_true": 100,
+      "n_outliers": 100,
+      "trials": [
+        {
+          "precision": 1.0,
+          "recall": 0.94,
+          "log_nfa": -329.9569494432326,
+          "n_inliers": 94,
+          "epsilon": 1.967794125533649,
+          "runtime": 0.019665956497192383,
+          "h_error": {
+            "corner_error_mean": 0.3081502231305026,
+            "corner_error_max": 0.5749702709676504,
+            "frobenius_error": 0.016272930508965378
+          },
+          "detected": true
+        },
+        {
+          "precision": 1.0,
+          "recall": 1.0,
+          "log_nfa": -316.75250820963964,
+          "n_inliers": 100,
+          "epsilon": 3.1504811729991573,
+          "runtime": 0.01863384246826172,
+          "h_error": {
+            "corner_error_mean": 0.40328962816294367,
+            "corner_error_max": 0.5663290460878437,
+            "frobenius_error": 0.005448957422779481
+          },
+          "detected": true
+        },
+        {
+          "precision": 1.0,
+          "recall": 0.98989898989899,
+          "log_nfa": -301.7098821899305,
+          "n_inliers": 98,
+          "epsilon": 3.450629676935858,
+          "runtime": 0.01708197593688965,
+          "h_error": {
+            "corner_error_mean": 0.6110259707147301,
+            "corner_error_max": 1.238123593504593,
+            "frobenius_error": 0.016296375049990566
+          },
+          "detected": true
+        },
+        {
+          "precision": 1.0,
+          "recall": 0.94,
+          "log_nfa": -314.06449865837055,
+          "n_inliers": 94,
+          "epsilon": 2.4114099744943824,
+          "runtime": 0.019855022430419922,
+          "h_error": {
+            "corner_error_mean": 0.6031372447271119,
+            "corner_error_max": 0.9284169392506921,
+            "frobenius_error": 0.008362368117342645
+          },
+          "detected": true
+        },
+        {
+          "precision": 1.0,
+          "recall": 0.95,
+          "log_nfa": -313.114545184565,
+          "n_inliers": 95,
+          "epsilon": 2.5718292421709923,
+          "runtime": 0.020637035369873047,
+          "h_error": {
+            "corner_error_mean": 0.3141698219862573,
+            "corner_error_max": 0.4732384369615958,
+            "frobenius_error": 0.0031457586057183854
+          },
+          "detected": true
+        },
+        {
+          "precision": 1.0,
+          "recall": 0.98,
+          "log_nfa": -315.9848217437992,
+          "n_inliers": 98,
+          "epsilon": 2.8870027617025604,
+          "runtime": 0.022584915161132812,
+          "h_error": {
+            "corner_error_mean": 0.7755545772026632,
+            "corner_error_max": 1.5355531887453893,
+            "frobenius_error": 0.014690965390782457
+          },
+          "detected": true
+        },
+        {
+          "precision": 1.0,
+          "recall": 0.98,
+          "log_nfa": -315.9182080223407,
+          "n_inliers": 98,
+          "epsilon": 2.8893591448697635,
+          "runtime": 0.02740192413330078,
+          "h_error": {
+            "corner_error_mean": 0.5395151305508502,
+            "corner_error_max": 0.6981393569508104,
+            "frobenius_error": 0.004464531682112918
+          },
+          "detected": true
+        },
+        {
+          "precision": 1.0,
+          "recall": 1.0,
+          "log_nfa": -327.1409430792625,
+          "n_inliers": 100,
+          "epsilon": 2.7814448742911475,
+          "runtime": 0.034098148345947266,
+          "h_error": {
+            "corner_error_mean": 0.34668702105093285,
+            "corner_error_max": 0.5615206222342465,
+            "frobenius_error": 0.013764041949175822
+          },
+          "detected": true
+        },
+        {
+          "precision": 1.0,
+          "recall": 0.99,
+          "log_nfa": -324.11668317906305,
+          "n_inliers": 99,
+          "epsilon": 2.7466854201833004,
+          "runtime": 0.026487112045288086,
+          "h_error": {
+            "corner_error_mean": 0.3145557221503826,
+            "corner_error_max": 0.5917961985413953,
+            "frobenius_error": 0.00792127071385633
+          },
+          "detected": true
+        },
+        {
+          "precision": 1.0,
+          "recall": 0.97,
+          "log_nfa": -325.442069889347,
+          "n_inliers": 97,
+          "epsilon": 2.4436229881080322,
+          "runtime": 0.02304816246032715,
+          "h_error": {
+            "corner_error_mean": 0.9130861895822155,
+            "corner_error_max": 1.3363751394917702,
+            "frobenius_error": 0.0013440611818267448
+          },
+          "detected": true
+        }
+      ]
+    },
+    {
+      "outlier_ratio": 0.7,
+      "n_inliers_true": 60,
+      "n_outliers": 140,
+      "trials": [
+        {
+          "precision": 1.0,
+          "recall": 0.9833333333333333,
+          "log_nfa": -174.25812668544233,
+          "n_inliers": 59,
+          "epsilon": 2.456381752888639,
+          "runtime": 0.14645671844482422,
+          "h_error": {
+            "corner_error_mean": 0.5002117136923484,
+            "corner_error_max": 0.7107529067465765,
+            "frobenius_error": 0.039198094778323075
+          },
+          "detected": true
+        },
+        {
+          "precision": 1.0,
+          "recall": 0.9833333333333333,
+          "log_nfa": -169.88515944591106,
+          "n_inliers": 59,
+          "epsilon": 2.691845379320648,
+          "runtime": 0.09955596923828125,
+          "h_error": {
+            "corner_error_mean": 1.0089577093113777,
+            "corner_error_max": 1.5958873386174925,
+            "frobenius_error": 0.0460819745136779
+          },
+          "detected": true
+        },
+        {
+          "precision": 1.0,
+          "recall": 0.9833333333333333,
+          "log_nfa": -169.7224413225578,
+          "n_inliers": 59,
+          "epsilon": 2.7010297388958406,
+          "runtime": 0.10922980308532715,
+          "h_error": {
+            "corner_error_mean": 0.46459490852965163,
+            "corner_error_max": 0.9521712270254363,
+            "frobenius_error": 0.0008033402498862442
+          },
+          "detected": true
+        },
+        {
+          "precision": 1.0,
+          "recall": 0.9833333333333333,
+          "log_nfa": -176.35217217060088,
+          "n_inliers": 59,
+          "epsilon": 2.351034950779823,
+          "runtime": 0.0985419750213623,
+          "h_error": {
+            "corner_error_mean": 1.1167044287043417,
+            "corner_error_max": 1.6422273705003922,
+            "frobenius_error": 0.015424739846607858
+          },
+          "detected": true
+        },
+        {
+          "precision": 1.0,
+          "recall": 0.95,
+          "log_nfa": -165.5058872479529,
+          "n_inliers": 57,
+          "epsilon": 2.5228577596644826,
+          "runtime": 0.09450912475585938,
+          "h_error": {
+            "corner_error_mean": 1.333762745329066,
+            "corner_error_max": 2.046526713356047,
+            "frobenius_error": 0.02081692005502909
+          },
+          "detected": true
+        },
+        {
+          "precision": 1.0,
+          "recall": 1.0,
+          "log_nfa": -171.6208925234395,
+          "n_inliers": 60,
+          "epsilon": 2.8027273905355634,
+          "runtime": 0.09530496597290039,
+          "h_error": {
+            "corner_error_mean": 0.6284913400893376,
+            "corner_error_max": 1.0923904935541209,
+            "frobenius_error": 0.030775827554460934
+          },
+          "detected": true
+        },
+        {
+          "precision": 1.0,
+          "recall": 0.9833333333333333,
+          "log_nfa": -174.37190598334965,
+          "n_inliers": 59,
+          "epsilon": 2.4505383606455347,
+          "runtime": 0.14689397811889648,
+          "h_error": {
+            "corner_error_mean": 0.5368759421594026,
+            "corner_error_max": 0.7693302269033642,
+            "frobenius_error": 0.017569174982207773
+          },
+          "detected": true
+        },
+        {
+          "precision": 1.0,
+          "recall": 1.0,
+          "log_nfa": -169.50238465765207,
+          "n_inliers": 60,
+          "epsilon": 2.9274946267672295,
+          "runtime": 0.10694193840026855,
+          "h_error": {
+            "corner_error_mean": 0.8862650060790268,
+            "corner_error_max": 1.3249352933104646,
+            "frobenius_error": 0.026210294648614605
+          },
+          "detected": true
+        },
+        {
+          "precision": 1.0,
+          "recall": 0.9833333333333333,
+          "log_nfa": -180.85207325886725,
+          "n_inliers": 59,
+          "epsilon": 2.139690181124422,
+          "runtime": 0.09211277961730957,
+          "h_error": {
+            "corner_error_mean": 0.6933379728196949,
+            "corner_error_max": 0.9260882169912412,
+            "frobenius_error": 0.017570302187638567
+          },
+          "detected": true
+        },
+        {
+          "precision": 1.0,
+          "recall": 0.9661016949152542,
+          "log_nfa": -170.52942946044664,
+          "n_inliers": 57,
+          "epsilon": 2.2688903779900222,
+          "runtime": 0.10250592231750488,
+          "h_error": {
+            "corner_error_mean": 0.5964395829760119,
+            "corner_error_max": 1.0801701773977745,
+            "frobenius_error": 0.00386744495092657
+          },
+          "detected": true
+        }
+      ]
+    },
+    {
+      "outlier_ratio": 0.9,
+      "n_inliers_true": 20,
+      "n_outliers": 180,
+      "trials": [
+        {
+          "precision": 0.0,
+          "recall": 0.0,
+          "log_nfa": 0.0,
+          "n_inliers": 0,
+          "epsilon": 0.0,
+          "runtime": 0.15219688415527344,
+          "h_error": {},
+          "detected": false
+        },
+        {
+          "precision": 0.0,
+          "recall": 0.0,
+          "log_nfa": 0.0,
+          "n_inliers": 0,
+          "epsilon": 0.0,
+          "runtime": 0.14870977401733398,
+          "h_error": {},
+          "detected": false
+        },
+        {
+          "precision": 0.0,
+          "recall": 0.0,
+          "log_nfa": 0.0,
+          "n_inliers": 0,
+          "epsilon": 0.0,
+          "runtime": 0.150040864944458,
+          "h_error": {},
+          "detected": false
+        },
+        {
+          "precision": 1.0,
+          "recall": 1.0,
+          "log_nfa": -41.33989944080868,
+          "n_inliers": 20,
+          "epsilon": 1.9730769860583162,
+          "runtime": 0.18419814109802246,
+          "h_error": {
+            "corner_error_mean": 1.245867905560146,
+            "corner_error_max": 2.131450220314209,
+            "frobenius_error": 0.005760136338462846
+          },
+          "detected": true
+        },
+        {
+          "precision": 0.0,
+          "recall": 0.0,
+          "log_nfa": 0.0,
+          "n_inliers": 0,
+          "epsilon": 0.0,
+          "runtime": 0.14743590354919434,
+          "h_error": {},
+          "detected": false
+        },
+        {
+          "precision": 0.0,
+          "recall": 0.0,
+          "log_nfa": 0.0,
+          "n_inliers": 0,
+          "epsilon": 0.0,
+          "runtime": 0.18334293365478516,
+          "h_error": {},
+          "detected": false
+        },
+        {
+          "precision": 0.0,
+          "recall": 0.0,
+          "log_nfa": 0.0,
+          "n_inliers": 0,
+          "epsilon": 0.0,
+          "runtime": 0.14758586883544922,
+          "h_error": {},
+          "detected": false
+        },
+        {
+          "precision": 1.0,
+          "recall": 0.95,
+          "log_nfa": -39.50150807424122,
+          "n_inliers": 19,
+          "epsilon": 1.7705434438230483,
+          "runtime": 0.17629480361938477,
+          "h_error": {
+            "corner_error_mean": 0.689613901937389,
+            "corner_error_max": 1.2585008363685097,
+            "frobenius_error": 0.006596177884801856
+          },
+          "detected": true
+        },
+        {
+          "precision": 1.0,
+          "recall": 1.0,
+          "log_nfa": -39.62303059566135,
+          "n_inliers": 20,
+          "epsilon": 2.2325242369392093,
+          "runtime": 0.18470406532287598,
+          "h_error": {
+            "corner_error_mean": 1.1552746790590063,
+            "corner_error_max": 1.559668110443387,
+            "frobenius_error": 0.015230468066378192
+          },
+          "detected": true
+        },
+        {
+          "precision": 0.0,
+          "recall": 0.0,
+          "log_nfa": 0.0,
+          "n_inliers": 0,
+          "epsilon": 0.0,
+          "runtime": 0.14706134796142578,
+          "h_error": {},
+          "detected": false
+        }
+      ]
+    }
+  ]
+}
