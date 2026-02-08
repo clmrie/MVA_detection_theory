@@ -5,7 +5,7 @@
   "n_inliers": 27,
   "log_nfa": -84.11782771114041,
   "epsilon": 2.333597506156326,
-  "runtime": 0.005797147750854492,
+  "runtime": 0.00808405876159668,
   "n_iterations": 13,
   "n_models_tested": 6,
   "reproj_error_mean": 1.564035448677725
