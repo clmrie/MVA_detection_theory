@@ -1,12 +1,12 @@
 {
   "experiment": "real_hard",
   "name": "hard",
-  "n_matches": 37,
-  "n_inliers": 27,
-  "log_nfa": -84.11782771114041,
-  "epsilon": 2.333597506156326,
-  "runtime": 0.00808405876159668,
-  "n_iterations": 13,
-  "n_models_tested": 6,
-  "reproj_error_mean": 1.564035448677725
+  "n_matches": 1212,
+  "n_inliers": 1023,
+  "log_nfa": -3990.5190620231583,
+  "epsilon": 4.1357423619388385,
+  "runtime": 0.17763090133666992,
+  "n_iterations": 6,
+  "n_models_tested": 1,
+  "reproj_error_mean": 1.6170084290802547
 }
