@@ -1,0 +1,13 @@
+{
+  "experiment": "real_easy",
+  "name": "imgA",
+  "n_matches": 1254,
+  "n_inliers": 564,
+  "log_nfa": -1645.272221043906,
+  "epsilon": 30.269833008015777,
+  "runtime": 0.05121493339538574,
+  "n_iterations": 88,
+  "n_models_tested": 12,
+  "reproj_error_mean": 13.273517021879824,
+  "reproj_error_median": 11.70084318164485
+}

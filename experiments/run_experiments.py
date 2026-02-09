@@ -253,11 +253,11 @@ def run_real_easy(output_dir: str, data_dir: str):
     print("\n=== Experiment 3: Real Images — Easy Case ===")
 
     # Look for image pairs in data directory
-    pairs = _find_image_pairs(data_dir, prefix='easy')
+    pairs = _find_image_pairs(data_dir, prefix='imgA')
     if not pairs:
-        print("  No easy image pairs found. Generating synthetic images instead.")
+        print("  No imgA image pairs found. Generating synthetic images instead.")
         pairs = [_generate_synthetic_image_pair(
-            data_dir, 'easy', difficulty='easy')]
+            data_dir, 'imgA', difficulty='easy')]
 
     for name, img1_path, img2_path in pairs:
         print(f"  Processing: {name}")
@@ -326,11 +326,11 @@ def run_real_hard(output_dir: str, data_dir: str):
     """Real image pair with significant viewpoint change or many outliers."""
     print("\n=== Experiment 4: Real Images — Hard Case ===")
 
-    pairs = _find_image_pairs(data_dir, prefix='hard')
+    pairs = _find_image_pairs(data_dir, prefix='imgB')
     if not pairs:
-        print("  No hard image pairs found. Generating synthetic images instead.")
+        print("  No imgB image pairs found. Generating synthetic images instead.")
         pairs = [_generate_synthetic_image_pair(
-            data_dir, 'hard', difficulty='hard')]
+            data_dir, 'imgB', difficulty='hard')]
 
     for name, img1_path, img2_path in pairs:
         print(f"  Processing: {name}")
