@@ -88,7 +88,8 @@ def orsa_homography(
     sample_size = 4
     n_outcomes = 1  # one model per 4-point sample
 
-    # Default max_threshold: squared diagonal of the larger image
+    # we cap the max error at the image diagonal squared because any match
+    # with error larger than the whole image diagonal cant possibly be an inlier
     if max_threshold is None:
         h1, w1 = img1_shape[:2]
         h2, w2 = img2_shape[:2]
@@ -106,22 +107,23 @@ def orsa_homography(
 
     rng = np.random.default_rng(seed)
 
-    # Precompute logalpha0 for each image
+    # logalpha0 is log10(pi/(w*h)) for each image
+    # this comes from the a-contrario model: the probability that a random
+    # point falls within distance epsilon of another is pi*eps^2/(w*h)
     h1, w1 = img1_shape[:2]
     h2, w2 = img2_shape[:2]
     logalpha0 = np.array([
-        np.log10(np.pi / (w1 * h1)),  # left image (side=0)
-        np.log10(np.pi / (w2 * h2)),  # right image (side=1)
+        np.log10(np.pi / (w1 * h1)),
+        np.log10(np.pi / (w2 * h2)),
     ])
 
-    # Precompute binomial coefficient tables
-    # log_combi_n[k] = log10(C(n, k)) for k=0..n  (paper Eq. 3)
+    # we precompute these tables once so we dont recompute binomial
+    # coefficients at every iteration
     log_combi_n = precompute_log_combi_n(n)
     log_combi_k = precompute_log_combi_k(sample_size, n)
 
-    # Initialize best model tracking
-    # Track best model overall (min log_nfa, even if > 0) to guide
-    # focused sampling in reserved iterations, as in IPOL algorithm
+    # we start with +inf so that any model we find is an improvement
+    # we track the best even if NFA > 1 because we need it for focused sampling later
     best_log_nfa = np.inf
     best_H = None
     best_inlier_mask = np.zeros(n, dtype=bool)
@@ -132,7 +134,9 @@ def orsa_homography(
     n_iter = max_iter
     log_nfa_history = []
 
-    # Reserve last 10% iterations for focused sampling
+    # we reserve the last 10% of iterations for focused sampling
+    # where we only draw from the current inlier set -- this helps
+    # refine the model once we have a rough idea of the inliers
     n_iter_reserve = max(1, max_iter // 10)
     n_iter_main = max_iter - n_iter_reserve
 
@@ -155,21 +159,22 @@ def orsa_homography(
             else:
                 indices = rng.choice(n, size=sample_size, replace=False)
 
-        # Degeneracy checks on sample
+        # we run several degeneracy checks before even computing errors
+        # this saves time and avoids polluting the NFA with garbage models
         if check_collinearity(pts1[indices]) or check_collinearity(pts2[indices]):
             continue
 
-        # Estimate H via DLT
         H = fit_homography_dlt(pts1[indices], pts2[indices])
         if H is None:
             continue
 
-        # Orientation check on sample points only (not all points)
-        # Invalid correspondences get infinite error in symmetric_transfer_error
+        # we only check orientation on the 4 sample points -- checking all
+        # points would be wasteful since non-orientation-preserving matches
+        # just get infinite error in the symmetric transfer error anyway
         if not check_orientation_preserving(H, pts1, pts2, indices=indices):
             continue
 
-        # Valid warp check: reject degenerate H that collapses space
+        # this rejects homographies that collapse or explode the image
         if not check_valid_warp(H, img1_shape):
             continue
 
@@ -183,7 +188,10 @@ def orsa_homography(
         sorted_errors = errors[order]
         sorted_sides = sides[order]
 
-        # Compute NFA with adaptive epsilon
+        # this is where the a-contrario magic happens -- we let the NFA
+        # find the best threshold automatically instead of fixing one
+        # we use mult_error=1.0 because our errors are squared distances
+        # and alpha = pi*eps^2/(w*h) so logalpha = logalpha0 + 1.0*log(error)
         log_nfa, k, err_at_k = compute_best_nfa(
             sorted_errors, sorted_sides, logalpha0,
             n, sample_size, n_outcomes,
@@ -206,7 +214,9 @@ def orsa_homography(
             best_inlier_mask = np.zeros(n, dtype=bool)
             best_inlier_mask[inlier_indices_sorted] = True
 
-            # Adaptive iteration count
+            # standard RANSAC adaptive stopping: once we know roughly how
+            # many inliers there are we can estimate how many iterations
+            # we need to find a clean sample with high probability
             inlier_ratio = k / n
             if 0 < inlier_ratio < 1:
                 p_all_inliers = inlier_ratio ** sample_size
@@ -222,7 +232,8 @@ def orsa_homography(
                     f"inliers = {k}/{n}, eps = {best_epsilon:.2f} px"
                 )
 
-    # Refinement phase: refit on inliers until convergence
+    # once the random sampling is done we refit H on all inliers
+    # this often improves the NFA because the initial H was fit on just 4 points
     if best_H is not None and best_log_nfa < 0:
         best_H, best_inlier_mask, best_log_nfa, best_k, best_epsilon = _refine_until_convergence(
             best_H, best_inlier_mask, pts1, pts2,
@@ -231,10 +242,10 @@ def orsa_homography(
             max_threshold, verbose,
         )
 
-        # LM polish
+        # final polish with Levenberg-Marquardt nonlinear optimization
         H_refined = refine_homography(best_H, pts1, pts2, best_inlier_mask)
         if H_refined is not None:
-            # Verify refinement didn't make things worse
+            # we only keep the refined H if its NFA is at least as good
             errors_ref, sides_ref = symmetric_transfer_error(H_refined, pts1, pts2)
             order_ref = np.argsort(errors_ref)
             log_nfa_ref, k_ref, err_ref = compute_best_nfa(
@@ -252,7 +263,8 @@ def orsa_homography(
                 best_inlier_mask = np.zeros(n, dtype=bool)
                 best_inlier_mask[inlier_indices_ref] = True
 
-    # If no meaningful detection (NFA >= 1), report as non-detection
+    # NFA < 1 means log_nfa < 0 which means the structure we found is
+    # unlikely to arise by chance -- thats the whole point of a-contrario
     is_meaningful = best_log_nfa < 0
     if not is_meaningful:
         best_H = None
@@ -292,7 +304,11 @@ def _refine_until_convergence(
     max_threshold, verbose,
     max_refine_iter=10,
 ):
-    """Iteratively refit H on inliers and recompute NFA until convergence."""
+    """Iteratively refit H on inliers and recompute NFA until convergence.
+
+    Each refit can change the inlier set which can change the refit and so on
+    We stop when the NFA stops improving
+    """
     best_log_nfa_ref = np.inf
     # Compute initial NFA
     errors, sides = symmetric_transfer_error(H, pts1, pts2)

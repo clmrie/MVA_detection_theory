@@ -72,8 +72,8 @@ def save_result(result_dict: dict, path: str):
 def run_null_model(output_dir: str):
     """Verify that ORSA does NOT detect homographies in purely random matches.
 
-    Under H0, all matches are random. The NFA should always be > 1
-    (log_NFA > 0), confirming the a-contrario false alarm control.
+    This is the most important sanity check -- if our NFA computation is
+    correct we should almost never get a false alarm on pure noise
     """
     print("\n=== Experiment 1: Null Model Validation ===")
     img_shape = (480, 640)
@@ -137,7 +137,8 @@ def run_null_model(output_dir: str):
 def run_simple_synthetic(output_dir: str):
     """Synthetic homography with varying outlier ratios.
 
-    Known H, moderate noise. Measure precision, recall, and H error.
+    We use a known ground truth H so we can measure exactly how well
+    ORSA recovers it as we crank up the outlier ratio from 10% to 90%
     """
     print("\n=== Experiment 2: Simple Synthetic Case ===")
     img_shape = (480, 640)
@@ -165,7 +166,8 @@ def run_simple_synthetic(output_dir: str):
                 max_iter=1000, seed=trial,
             )
 
-            # Compute precision / recall
+            # we compare ORSA's inlier mask against the ground truth to see
+            # if it correctly separates inliers from outliers
             if result.n_inliers > 0:
                 tp = np.sum(result.inlier_mask & gt_mask)
                 fp = np.sum(result.inlier_mask & ~gt_mask)
@@ -388,9 +390,10 @@ def run_real_hard(output_dir: str, data_dir: str):
 # Experiment 5: Failure Case
 
 def run_failure_case(output_dir: str, data_dir: str):
-    """Cases where homography is NOT valid: non-planar, repeated textures, etc.
+    """Cases where ORSA should NOT find a meaningful homography.
 
-    ORSA should report NFA > 1 or find only a partial model.
+    We test pure noise, multi-structure scenes, and extreme outlier ratios
+    to make sure ORSA correctly says "no" when there is nothing to find
     """
     print("\n=== Experiment 5: Failure Case ===")
 
@@ -415,9 +418,9 @@ def run_failure_case(output_dir: str, data_dir: str):
         'log_nfa': float(result.log_nfa), 'detected': result.log_nfa < 0,
     }, os.path.join(output_dir, 'failure_random.json'))
 
-    # Sub-experiment 5b: two conflicting homographies (multi-structure)
-    # Note: ORSA correctly detects the dominant plane — this is a *success*,
-    # not a failure. We keep it to demonstrate robustness to mixed models.
+    # two planes with different homographies mixed together
+    # ORSA should find the dominant one and ignore the other
+    # this is actually a success case not a failure but its good to show
     print("  5b: Multi-structure — two conflicting homographies")
     H1 = np.array([[1.05, 0.08, 15], [-0.03, 0.98, 10], [0.0001, 0.00005, 1]])
     H2 = np.array([[0.95, -0.1, -20], [0.06, 1.05, 15], [-0.0002, 0.0001, 1]])
@@ -447,8 +450,8 @@ def run_failure_case(output_dir: str, data_dir: str):
         'n_inliers': result.n_inliers,
     }, os.path.join(output_dir, 'multi_structure.json'))
 
-    # Sub-experiment 5c: extreme outlier ratio (true failure case)
-    # Very few inliers swamped by outliers — detection should fail.
+    # only 5 real inliers buried in 300 outliers -- way too few for ORSA
+    # to find anything meaningful, so it should correctly report no detection
     print("  5c: Extreme outlier ratio (5 inliers / 300 outliers)")
     n_trials_failure = 20
     n_detected = 0
@@ -508,7 +511,8 @@ def run_failure_case(output_dir: str, data_dir: str):
 # Experiment 6: Sensitivity Analysis
 
 def run_sensitivity(output_dir: str):
-    """Vary ORSA parameters and random seeds to assess stability."""
+    """Check that ORSA gives consistent results across different seeds
+    and that increasing max_iter improves accuracy up to a point."""
     print("\n=== Experiment 6: Sensitivity Analysis ===")
     img_shape = (480, 640)
     H_true = make_test_homographies(img_shape)['perspective_mild']
@@ -556,7 +560,8 @@ def run_sensitivity(output_dir: str):
             'runtimes': [float(x) for x in runtimes],
         })
 
-    # 6b: Vary random seed (stability)
+    # same data different seeds -- if ORSA is stable the results should
+    # be very similar regardless of which random samples we draw
     print("  6b: Seed stability (max_iter=1000)")
     seed_log_nfas = []
     seed_n_inliers = []
@@ -670,7 +675,7 @@ def _generate_synthetic_image_pair(
 
 
 def _compute_nfa_curve(result, match_result, img1, img2):
-    """Compute the full NFA curve for plotting."""
+    """Recompute NFA for all k values using the best H so we can plot the curve."""
     if result.H is None:
         return None, None
 

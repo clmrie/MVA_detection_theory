@@ -73,14 +73,14 @@ def detect_and_match(
             method=method,
         )
 
-    # Match descriptors with ratio test
+    # lowes ratio test: we keep a match only if the best match is significantly
+    # better than the second best -- this filters out ambiguous matches that
+    # would just be noise for ORSA
     if mutual:
-        # Cross-check matching (no ratio test needed)
         bf = cv2.BFMatcher(norm_type, crossCheck=True)
         raw_matches = bf.match(desc1, desc2)
         good_matches = raw_matches
     else:
-        # KNN matching with Lowe's ratio test
         bf = cv2.BFMatcher(norm_type)
         raw_matches = bf.knnMatch(desc1, desc2, k=2)
         good_matches = []
@@ -100,12 +100,11 @@ def detect_and_match(
             method=method,
         )
 
-    # Remove exact duplicate correspondences (same pair of endpoints).
-    # The IPOL paper warns only about exact duplicates, not shared single
-    # endpoints, which occur legitimately in repetitive textures.
+    # we remove exact duplicate pairs as the IPOL paper warns about them
+    # but we keep matches that share a single endpoint since those happen
+    # legitimately with repetitive textures
     seen_pairs = set()
     unique_matches = []
-    # Sort by distance (best first)
     good_matches = sorted(good_matches, key=lambda m: m.distance)
     for m in good_matches:
         pair = (m.queryIdx, m.trainIdx)

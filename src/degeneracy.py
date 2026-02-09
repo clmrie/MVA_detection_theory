@@ -22,9 +22,11 @@ def check_collinearity(pts: np.ndarray, threshold: float = 1e-4) -> bool:
     -------
     True if the configuration is degenerate (collinear), False if OK.
     """
+    # if 3 points are collinear the DLT system becomes rank-deficient
+    # and we get a garbage homography, so we reject these samples early
     n = len(pts)
     for i, j, k in combinations(range(n), 3):
-        # Signed area of triangle = 0.5 * |det([pj-pi, pk-pi])|
+        # cross product gives twice the triangle area
         v1 = pts[j] - pts[i]
         v2 = pts[k] - pts[i]
         area = abs(v1[0] * v2[1] - v1[1] * v2[0])
@@ -47,6 +49,8 @@ def check_conditioning(H: np.ndarray, threshold: float = 0.1) -> bool:
     -------
     True if H is well-conditioned, False if degenerate.
     """
+    # we check on the normalized H before denormalization as recommended by IPOL
+    # a badly conditioned H means the mapping is nearly singular and unreliable
     sigma = np.linalg.svd(H, compute_uv=False)
     if sigma[0] < 1e-15:
         return False
@@ -62,20 +66,10 @@ def check_orientation_preserving(
 ) -> bool:
     """Check that H preserves orientation at the given correspondences.
 
-    The homography maps x1 -> H @ [x1, y1, 1]^T = [x', y', w']^T.
-    We need w' > 0 for the mapping to be orientation-preserving.
-    We check on the points from image 1.
-
-    Parameters
-    ----------
-    H : (3, 3) homography matrix
-    pts1 : (n, 2) points in image 1
-    pts2 : (n, 2) points in image 2 (unused, kept for API consistency)
-    indices : optional subset of indices to check; if None, check all
-
-    Returns
-    -------
-    True if orientation is preserved at all checked points, False otherwise.
+    We need w' > 0 when we project a point through H otherwise it means
+    the point got mapped behind the camera which is physically nonsensical
+    We only check on the sample points not all points because invalid
+    correspondences will just get infinite error later in symmetric_transfer_error
     """
     if indices is not None:
         pts = pts1[indices]
@@ -90,15 +84,9 @@ def check_orientation_preserving(
 def check_valid_warp(H: np.ndarray, img_shape: tuple, max_area_ratio: float = 100.0) -> bool:
     """Check that H does not warp image corners to absurd locations.
 
-    Parameters
-    ----------
-    H : (3, 3) homography matrix
-    img_shape : (h, w) of the source image
-    max_area_ratio : maximum ratio of warped area to original area
-
-    Returns
-    -------
-    True if the warp is reasonable, False otherwise.
+    We added this because some homographies pass all the other checks but
+    still collapse the image to a tiny sliver or blow it up to crazy sizes
+    This catches those degenerate cases that would pollute the NFA scoring
     """
     h, w = img_shape[:2]
     corners = np.array([
@@ -122,10 +110,10 @@ def check_valid_warp(H: np.ndarray, img_shape: tuple, max_area_ratio: float = 10
     if np.any(np.abs(mapped_xy) > 1e6):
         return False
 
-    # Check area ratio using shoelace formula
+    # we use the shoelace formula to compute how much the area changed
+    # if it grew or shrank by more than 100x the homography is degenerate
     x = mapped_xy[0, :]
     y = mapped_xy[1, :]
-    # Shoelace formula for quadrilateral area
     area_mapped = 0.5 * abs(
         x[0] * y[1] - x[1] * y[0]
         + x[1] * y[2] - x[2] * y[1]

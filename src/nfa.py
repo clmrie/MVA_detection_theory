@@ -22,9 +22,11 @@ def log10_combi(n: int, k: int) -> float:
         return -np.inf
     if k == 0 or k == n:
         return 0.0
-    # Use smaller k for efficiency: C(n, k) = C(n, n-k)
+    # we use the smaller of k and n-k since C(n,k) = C(n,n-k) and it saves iterations
     if k > n - k:
         k = n - k
+    # we sum logs instead of multiplying directly because the raw binomial
+    # coefficients get astronomically large and would overflow
     result = 0.0
     for i in range(1, k + 1):
         result += np.log10(n - i + 1) - np.log10(i)
@@ -36,6 +38,8 @@ def precompute_log_combi_n(n: int) -> np.ndarray:
 
     Returns array of length n + 1 where out[k] = log10(C(n, k)).
     """
+    # we precompute all of these upfront so the inner NFA loop stays fast
+    # we use the recurrence C(n,k) = C(n,k-1) * (n-k+1)/k
     table = np.zeros(n + 1)
     for k in range(1, n + 1):
         table[k] = table[k - 1] + np.log10(n - k + 1) - np.log10(k)
@@ -99,7 +103,7 @@ def compute_best_nfa(
     """
     eps_machine = np.finfo(float).eps
 
-    # Number-of-tests factor: log10(n_outcomes * (n - p))
+    # this is the number-of-tests correction from eq 3 of the paper
     n_minus_p = n_data - sample_size
     if n_minus_p <= 0:
         return 0.0, 0, 0.0
@@ -109,33 +113,37 @@ def compute_best_nfa(
     best_k = 0
     best_error = 0.0
 
+    # we try every possible inlier count k and pick the one that gives
+    # the smallest NFA -- this is the key idea of a-contrario, we let the
+    # data choose the threshold instead of fixing it ourselves
     for i in range(sample_size, n_data):
-        # i is 0-indexed; this corresponds to the (i+1)-th match
-        # k = i + 1 = number of inliers if we use error[i] as threshold
         error_i = sorted_errors[i]
 
+        # we skip errors beyond the image diagonal squared because those
+        # matches are physically impossible and would break the model
         if error_i > max_threshold:
             break
 
+        # alpha is the probability that a random match has error <= error_i
+        # we did it per-side because the two images can have different sizes
         side_i = int(sorted_sides[i])
         logalpha = logalpha0[side_i] + mult_error * np.log10(error_i + eps_machine)
 
-        # Clip: probability cannot exceed 1 => logalpha <= 0
+        # alpha cant exceed 1 so we clamp it
         if logalpha > 0.0:
             logalpha = 0.0
 
-        # k = i + 1 = number of inliers
-        # j = k - sample_size = number of inliers beyond the minimal sample
         k = i + 1
-        j = k - sample_size  # j >= 1
+        j = k - sample_size
 
-        # NFA(k) = n_outcomes * (n-p) * C(n, k) * C(k, p) * alpha^(k-p)
-        # Paper Eq. (3): NFA(k) = (n-4) * C(n, k) * C(k, 4) * alpha^(k-4)
+        # this is eq 3 from the IPOL paper
+        # NFA = (n-4) * C(n,k) * C(k,4) * alpha^(k-4)
+        # we use C(n,k)*C(k,4) and NOT C(n-4,k-4)*C(k,4) which would be wrong
         log_nfa = (
             loge0
             + logalpha * j
             + log_combi_n[k]       # log10(C(n, k))
-            + log_combi_k[k]       # log10(C(k, p)) where p = sample_size
+            + log_combi_k[k]       # log10(C(k, p))
         )
 
         if log_nfa < best_log_nfa:
@@ -143,7 +151,6 @@ def compute_best_nfa(
             best_k = i + 1
             best_error = error_i
 
-    # If no candidate was tested, return log_nfa = 0 (NFA = 1, not meaningful)
     if best_log_nfa == np.inf:
         return 0.0, 0, 0.0
 
@@ -163,10 +170,8 @@ def compute_nfa_for_all_k(
 ) -> np.ndarray:
     """Compute log10(NFA) for every k from sample_size+1 to n_data.
 
-    Useful for plotting the NFA curve as a function of k.
-
-    Returns array of shape (n_data,) where entry i contains the log_NFA
-    when using i+1 inliers (entries for i < sample_size are set to inf).
+    Same logic as compute_best_nfa but we keep all values instead of just the min
+    so we can plot the full NFA curve and see where the minimum falls.
     """
     eps_machine = np.finfo(float).eps
     n_minus_p = n_data - sample_size

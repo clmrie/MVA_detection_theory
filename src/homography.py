@@ -16,15 +16,10 @@ def normalize_points(pts: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Hartley normalization: translate centroid to origin, scale so
     mean distance from origin equals sqrt(2).
 
-    Parameters
-    ----------
-    pts : (n, 2) array of 2D points
-
-    Returns
-    -------
-    pts_norm : (n, 2) normalized points
-    T : (3, 3) normalization matrix such that
-        pts_norm_h = T @ pts_h  (homogeneous coordinates)
+    We do this because without normalization the DLT is numerically
+    unstable -- the condition number of the A matrix blows up when
+    pixel coordinates are in the hundreds while the homogeneous
+    coordinate is 1
     """
     centroid = np.mean(pts, axis=0)
     pts_centered = pts - centroid
@@ -62,11 +57,11 @@ def fit_homography_dlt(pts1: np.ndarray, pts2: np.ndarray) -> np.ndarray | None:
     if n < 4:
         return None
 
-    # Normalize
     pts1_norm, T1 = normalize_points(pts1)
     pts2_norm, T2 = normalize_points(pts2)
 
-    # Build the 2n x 9 matrix A
+    # each correspondence gives us 2 equations (one per coordinate)
+    # so 4 points give us 8 equations for 8 unknowns (H has 9 entries but we fix scale)
     A = np.zeros((2 * n, 9))
     for i in range(n):
         x1, y1 = pts1_norm[i]
@@ -74,21 +69,21 @@ def fit_homography_dlt(pts1: np.ndarray, pts2: np.ndarray) -> np.ndarray | None:
         A[2 * i] = [x1, y1, 1, 0, 0, 0, -x2 * x1, -x2 * y1, -x2]
         A[2 * i + 1] = [0, 0, 0, x1, y1, 1, -y2 * x1, -y2 * y1, -y2]
 
-    # SVD
+    # the solution is the right singular vector corresponding to the smallest
+    # singular value ie the last row of Vt
     try:
         _, S, Vt = np.linalg.svd(A)
     except np.linalg.LinAlgError:
         return None
 
-    # Last row of Vt (= last column of V)
     h = Vt[-1, :]
     H_norm = h.reshape(3, 3)
 
-    # Check conditioning on the normalized H (before denormalization)
+    # we check conditioning before denormalization because thats what IPOL recommends
     if not check_conditioning(H_norm):
         return None
 
-    # Denormalize
+    # undo the normalization: H = T2^-1 @ H_norm @ T1
     H = np.linalg.inv(T2) @ H_norm @ T1
 
     # Normalize so H[2,2] = 1 (if possible)
@@ -106,18 +101,12 @@ def symmetric_transfer_error(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Compute symmetric transfer error for each correspondence.
 
-    error_i = max(d(x2, H @ x1)^2, d(x1, H^{-1} @ x2)^2)
+    We take the max of forward and backward error because a good homography
+    should work well in both directions -- if it only works one way its
+    probably fitting noise
 
-    Parameters
-    ----------
-    H : (3, 3) homography matrix
-    pts1, pts2 : (n, 2) point arrays
-
-    Returns
-    -------
-    errors : (n,) max of forward and backward squared distances
-    sides : (n,) int, 0 = backward (left) error dominates,
-            1 = forward (right) error dominates
+    We also track which side dominates because the NFA needs to know which
+    image to use for the alpha computation (they can have different sizes)
     """
     n = len(pts1)
     large_error = 1e18
@@ -187,20 +176,11 @@ def refine_homography(
     pts2: np.ndarray,
     inlier_mask: np.ndarray,
 ) -> np.ndarray | None:
-    """Refine H using Levenberg-Marquardt minimization on inlier
-    correspondences, minimizing forward transfer error d(H @ x1, x2).
+    """Refine H using Levenberg-Marquardt on inlier correspondences only.
 
-    Parameterization: 8 free parameters (H[2,2] = 1 fixed).
-
-    Parameters
-    ----------
-    H_init : (3, 3) initial homography
-    pts1, pts2 : (n, 2) all points
-    inlier_mask : (n,) boolean mask
-
-    Returns
-    -------
-    H_refined : (3, 3) refined homography, or None if refinement fails.
+    The DLT gives us a good starting point but LM can squeeze out extra
+    accuracy by minimizing the actual reprojection error nonlinearly
+    We fix H[2,2]=1 so we optimize 8 free parameters
     """
     p1 = pts1[inlier_mask]
     p2 = pts2[inlier_mask]
