@@ -1,0 +1,6 @@
+{
+  "experiment": "failure_shuffled",
+  "n_matches": 1000,
+  "log_nfa": 0.0,
+  "detected": false
+}

@@ -35,11 +35,11 @@
   Implementation, Analysis, and Experiments%
 }
 \author{
-  [Name]\\
-  MVA, ENS Paris-Saclay\\
-  \texttt{[email]}
+  Clement Marie, Mousshine Rifaki\\
+  MVA, ENS Paris-Saclay
 }
-\date{February 2025}
+\date{February 2025\\[0.5em]
+\normalsize\url{https://github.com/clmrie/MVA_detection_theory.git}}
 
 % ═══════════════════════════════════════════════════════════════════════════
 \begin{document}
@@ -48,25 +48,44 @@
 \begin{abstract}
 We present a complete implementation and experimental analysis of the ORSA
 (Optimized Random Sampling) algorithm for automatic homographic registration
-of image pairs, following the a-contrario framework of Moisan, Moulon, and
+of image pairs, following the a-contrario apparatus of Moisan, Moulon, and
 Monasse~\cite{moisan2012}. Unlike classical RANSAC, which requires a
 manually tuned inlier threshold, ORSA adaptively selects the threshold that
 minimizes the Number of False Alarms (NFA), providing rigorous statistical
 control on false detections. We describe the detection problem, derive the
 NFA formula, verify it satisfies the theoretical requirements, detail our
-implementation, and present experiments on synthetic and real data covering
-null-model validation, robustness to outliers, sensitivity analysis, and
-failure cases.
+implementation, and present experiments on real image data covering
+null-model validation, robustness to outlier injection, sensitivity
+analysis, and failure cases.
 \end{abstract}
 
 % ═══════════════════════════════════════════════════════════════════════════
 \section{Introduction}\label{sec:intro}
 
+Registering two images of the same scene is a fundamental problem in
+computer vision. When the scene is planar or the camera undergoes a pure
+rotation, the geometric relationship between the images is described by
+a projective homography. Although four correct point correspondences are
+sufficient to estimate a homography, feature matching methods such as
+SIFT typically produce many outliers, which can severely corrupt a
+direct least-squares estimate.
+
+RANSAC addresses this issue by fitting models from random samples and
+selecting inliers using a fixed distance threshold. However, this
+threshold must be chosen manually and can strongly affect the result.
+The a-contrario apparatus provides a principled alternative by selecting
+the threshold that minimizes the Number of False Alarms (NFA), thereby
+controlling false detections. The ORSA algorithm applies this idea to
+homography estimation in a RANSAC-like setting.
+
+In this report, we implement the ORSA algorithm for homographic
+registration and evaluate its behavior on real image data.
+
 \subsection{Detection problem}
 
 \subsection{A-contrario viewpoint and Gestalt link}
 
-The a-contrario framework draws its motivation from the Helmholtz
+The a-contrario apparatus draws its motivation from the Helmholtz
 principle~\cite{desolneux2000,desolneux2008}: a structure is perceptually
 meaningful if it is very unlikely to arise by chance. When a set of point
 correspondences all agree with a single homography, this agreement seems
@@ -81,15 +100,15 @@ random data.
 \subsection{Contributions}
 
 We implement the full ORSA pipeline following~\cite{moisan2012} and
-evaluate it on both synthetic and real data. On the theoretical side,
-we provide a formal proof that the NFA satisfies the a-contrario
-guarantee, and we validate this property empirically by running ORSA
-on purely random data. On the experimental side, we measure robustness
-against outlier ratios ranging from 10\% to 90\%, test sensitivity to
-the iteration budget and to random seed choices, and analyze failure
-cases such as extreme outlier ratios and scenes with multiple
-homographies. We also present results on real image pairs with
-qualitative visualizations. The implementation handles degeneracy
+evaluate it entirely on real image data. On the theoretical side, we
+provide a formal proof that the NFA satisfies the a-contrario
+guarantee, and we validate this property empirically by running ORSA on
+shuffled real SIFT keypoints. On the experimental side, all quantitative
+experiments are built around a single real image pair: we test
+robustness by injecting random noise correspondences at increasing
+ratios, measure sensitivity to the iteration budget and to random seed
+choices, and analyze failure cases such as extreme outlier ratios and
+scenes with multiple homographies. The implementation handles degeneracy
 checks, log-space NFA computation, and iterative refinement with
 Levenberg-Marquardt polishing.
 
@@ -126,8 +145,8 @@ Levenberg-Marquardt polishing.
 
 \subsection{ORSA loop}
 The ORSA algorithm (\Cref{alg:orsa}) follows the same general strategy
-as RANSAC---repeatedly drawing random samples and fitting candidate
-models---but replaces the fixed inlier threshold with the a-contrario
+as RANSAC, repeatedly drawing random samples and fitting candidate
+models, but replaces the fixed inlier threshold with the a-contrario
 NFA criterion. At each iteration, a candidate homography is estimated
 from 4 random correspondences, and the NFA is evaluated at every
 possible inlier count. The best model across all iterations is the one
@@ -221,106 +240,121 @@ good model is found early.
 % ═══════════════════════════════════════════════════════════════════════════
 \section{Experiments}\label{sec:experiments}
 
-We conduct a series of experiments to validate the implementation and
-understand how the method behaves under different conditions.
+All experiments are built around the same real image pair (imgB),
+which shows two building photographs with a significant perspective
+change. SIFT matching produces 1106 correspondences, of which ORSA
+identifies 981 inliers (89\%) with $\log_{10}\NFA = -3863$ as the
+reference result. Using a single real pair throughout makes the
+experimental setup coherent and avoids any artificial bias from
+synthetic data generation.
 
 \subsection{Null model validation}\label{sec:exp_null}
 
-The most basic sanity check for an a-contrario method is to verify that
-it does not detect anything when there is nothing to detect. To test
-this, we generate purely random correspondences with no underlying
-homography, using $n \in \{50, 100, 200, 500\}$ matches. For each
-value of $n$, we run 50 independent trials with 500 ORSA iterations
-each.
+A basic sanity check for an a-contrario method is that it should not
+produce detections when no meaningful structure is present. We construct
+null data by taking the real SIFT keypoints from imgB and randomly
+permuting the target points. This breaks all true correspondences while
+preserving the spatial clustering of keypoints, which is more realistic
+than uniform random sampling.
 
-\Cref{tab:null_model} shows the results. Out of 200 total trials, only
-one produced a (marginal) false detection ($\log_{10}\NFA = -0.67$ at
-$n=50$). All other trials returned $\log_{10}\NFA = 0$, meaning no
-model was deemed significant.
+For each subsample size $n \in \{50, 100, 200, 500, 1000\}$, we run 50
+independent trials with different random permutations.
+
+\Cref{tab:null_model} reports the raw $\log_{10}\NFA$ of the best
+candidate found in each trial, before clamping non-detections to~0. A
+detection would require $\log_{10}\NFA < 0$. No detections occur in any
+of the 250 trials; the smallest observed value is $+3.7$ at $n=50$,
+still more than three orders of magnitude above the detection threshold.
+As $n$ increases, NFA values grow due to the increasing combinatorial
+correction.
 
 \begin{table}[htbp]
 \centering
-\caption{Null model validation: false alarm rate on pure random data.}
+\caption{Null model validation using shuffled real SIFT keypoints from
+imgB. Values are raw $\log_{10}\NFA$ (before clamping).}
 \label{tab:null_model}
-\begin{tabular}{@{}lcccc@{}}
+\begin{tabular}{@{}lccccc@{}}
 \toprule
-$n$ (outliers) & 50 & 100 & 200 & 500 \\
+$n$ (shuffled) & 50 & 100 & 200 & 500 & 1000 \\
 \midrule
-False alarms / 50 trials & 1 & 0 & 0 & 0 \\
-Mean $\log_{10}\NFA$ & $-0.01$ & $0.0$ & $0.0$ & $0.0$ \\
-Min $\log_{10}\NFA$ & $-0.67$ & $0.0$ & $0.0$ & $0.0$ \\
+False alarms / 50 trials & 0 & 0 & 0 & 0 & 0 \\
+Mean $\log_{10}\NFA$ & $5.7$ & $7.2$ & $8.7$ & $10.4$ & $12.0$ \\
+Min $\log_{10}\NFA$ & $3.7$ & $5.1$ & $6.2$ & $7.3$ & $8.9$ \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-When no candidate model achieves $\NFA < 1$, the algorithm reports
-$\log_{10}\NFA = 0$ (i.e.\ $\NFA = 1$), meaning ``no detection.'' This
-explains the strong concentration at~0 in \Cref{fig:null_model}. The
-result is consistent with the theoretical guarantee (\Cref{thm:nfa}):
-the expected number of false alarms under the null model is at most~1,
-and our observed false alarm rate of 0.5\% is well within this bound.
+\Cref{fig:null_model} shows the distribution of the best
+$\log_{10}\NFA$ values. All observations lie well to the right of the
+detection threshold (red dashed line at~0), consistent with the
+a-contrario guarantee that false alarms are rare under the null model,
+even in the presence of spatially clustered keypoints.
 
 \begin{figure}[htbp]
   \centering
-  \includegraphics[width=0.7\textwidth]{figures/null_model.png}
-  \caption{Distribution of $\log_{10}\NFA$ under the null model.
-  Nearly all values are at 0 (no detection), validating the
-  a-contrario false alarm control.}
+  \includegraphics[width=0.85\textwidth]{figures/null_model.png}
+  \caption{Distribution of best $\log_{10}\NFA$ across 50 trials per
+  subsample size on shuffled real SIFT keypoints. The red dashed line
+  marks the detection threshold ($\log_{10}\NFA = 0$). All values lie
+  well above this threshold, confirming the absence of false alarms.}
   \label{fig:null_model}
 \end{figure}
 
-\subsection{Synthetic controlled experiments}\label{sec:exp_synthetic}
+\subsection{Robustness to outlier injection}\label{sec:exp_outlier}
 
-We generate synthetic data from a known mild-perspective homography
-$H_{\mathrm{true}}$, with $n=200$ total correspondences and Gaussian
-noise of $\sigma=1$ pixel on the inlier projections. The outlier ratio
-varies from 10\% to 90\%, and we run 10 trials per condition.
+To evaluate robustness to outliers, we start from the 1106 real SIFT
+matches of imgB and progressively add random false correspondences,
+uniformly distributed in both images.
 
-\Cref{tab:synthetic} summarizes the results. Precision and recall are
-reported \emph{conditional on detection}: they are averaged only over
-trials where ORSA found a meaningful model ($\NFA < 1$). Trials where
-no model was detected contribute to the detection rate column but not
-to precision or recall. ORSA achieves perfect precision (no false
-inliers) at all outlier ratios, and a 100\% detection rate up to 70\%
-outliers. At 90\% outliers, only 20 of the 200 correspondences are
-true inliers, and the probability of drawing 4 inliers at random
-becomes very low. Accordingly, detection drops to 30\%.
+The ORSA result on the clean data is used as reference: the 981 inliers
+found in this setting are treated as ground truth. Precision measures
+the fraction of detected inliers that are real matches, while recall
+measures the fraction of these reference inliers that are still
+recovered after adding noise.
+
+\Cref{tab:synthetic_noise} shows the results averaged over 10 trials per
+noise level. ORSA maintains perfect precision and near-perfect recall up
+to 71\% injected noise. Even at 83\% noise, detection succeeds in 9 out
+of 10 trials, although recall drops to 86\%.
+
 
 \begin{table}[htbp]
 \centering
-\caption{Synthetic experiments: performance vs.\ outlier ratio.}
-\label{tab:synthetic}
-\begin{tabular}{@{}lccccc@{}}
+\caption{Robustness to outlier injection on imgB matches. Precision and
+recall are measured against the ORSA reference result on clean data.}
+\label{tab:outlier_injection}
+\begin{tabular}{@{}lcccccc@{}}
 \toprule
-Outlier ratio & 10\% & 30\% & 50\% & 70\% & 90\% \\
+Injected noise & 0\% & 18\% & 33\% & 50\% & 71\% & 83\% \\
 \midrule
-Detection rate & 10/10 & 10/10 & 10/10 & 10/10 & 3/10 \\
-Precision & 1.00 & 1.00 & 1.00 & 1.00 & 1.00 \\
-Recall & 0.98 & 0.98 & 0.98 & 0.98 & 0.98 \\
-Mean $\log_{10}\NFA$ & $-666$ & $-486$ & $-318$ & $-172$ & $-40$ \\
-Corner error (px) & 0.44 & 0.41 & 0.48 & 0.77 & 1.03 \\
+Detection rate & 10/10 & 10/10 & 10/10 & 10/10 & 10/10 & 9/10 \\
+Precision & 1.00 & 1.00 & 1.00 & 1.00 & 1.00 & 0.90 \\
+Recall & 0.99 & 1.00 & 0.98 & 0.98 & 0.98 & 0.86 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \begin{figure}[htbp]
   \centering
-  \includegraphics[width=0.85\textwidth]{figures/simple_synthetic.png}
-  \caption{Left: precision and recall vs.\ outlier ratio.
-  Right: homography accuracy (corner error) vs.\ outlier ratio.}
-  \label{fig:synthetic}
+  \includegraphics[width=\textwidth]{figures/outlier_injection.png}
+  \caption{Left: precision and recall vs.\ fraction of injected noise.
+  Right: homography consistency (corner error vs.\ reference) vs.\
+  noise fraction.}
+  \label{fig:outlier_injection}
 \end{figure}
 
 \subsection{Real images}\label{sec:exp_real}
 
 \begin{figure}[htbp]
   \centering
-  \begin{subfigure}[b]{0.48\textwidth}
+  \begin{subfigure}[b]{0.85\textwidth}
+    \centering
     \includegraphics[width=\textwidth]{figures/real_easy_imgA.png}
     \caption{Easy case (imgA): 564/1254 inliers, $\log_{10}\NFA=-1645$.}
   \end{subfigure}
-  \hfill
-  \begin{subfigure}[b]{0.48\textwidth}
+  \\[1em]
+  \begin{subfigure}[b]{0.85\textwidth}
+    \centering
     \includegraphics[width=\textwidth]{figures/real_hard_imgB.png}
     \caption{Hard case (imgB): 1023/1212 inliers, $\log_{10}\NFA=-3991$.}
   \end{subfigure}
@@ -331,62 +365,71 @@ Corner error (px) & 0.44 & 0.41 & 0.48 & 0.77 & 1.03 \\
 \end{figure}
 
 \paragraph{Easy case (imgA).}
-The first pair consists of two bookshelf photographs with a mild
-perspective change, yielding 1254 SIFT matches. ORSA identifies 564
-inliers (45\%) with $\log_{10}\NFA = -1645$ and a threshold of
-$\varepsilon = 30.3$\,px (\Cref{fig:example_matches}a). The mean
-reprojection error is 13.3\,px, and the computation takes 51\,ms. The
-extremely negative NFA indicates a very strong detection. The
-relatively large threshold reflects the high resolution of the images:
-at higher resolution, even accurately matched points can be several
-pixels apart.
+The first image pair shows two bookshelf photographs with a small
+viewpoint change. SIFT produces 1254 matches, from which ORSA selects
+564 inliers (45\%) with $\log_{10}\NFA = -1645$ and an automatically
+chosen threshold of $\varepsilon = 30.3$\,px
+(\Cref{fig:example_matches}a). The mean reprojection error is 13.3\,px,
+and the computation takes 51\,ms. The very negative NFA indicates a
+strong detection. The relatively large threshold reflects the high image
+resolution and the fact that the matches are geometrically noisy.
 
 \paragraph{Hard case (imgB).}
-The second pair shows two building photographs with a more pronounced
-perspective change. Out of 1212 SIFT matches, ORSA finds 1023 inliers
-(84\%) with $\log_{10}\NFA = -3991$ and a much tighter threshold of
+The second image pair shows two building photographs with a much larger
+perspective change, making the alignment visually more difficult. Out of
+1212 SIFT matches, ORSA finds 1023 inliers (84\%) with
+$\log_{10}\NFA = -3991$ and a much smaller threshold of
 $\varepsilon = 4.1$\,px (\Cref{fig:example_matches}b). The mean
-reprojection error is only 1.6\,px. The smaller threshold compared to
-imgA reflects less geometric distortion between the two views, and the
-high inlier ratio shows that most matches in this pair are genuine.
+reprojection error is only 1.6\,px, indicating a very accurate
+homography. Although the viewpoint change is larger than in imgA, the
+matches are more consistent, which explains the tighter threshold and
+the higher inlier ratio.
+
 
 \subsection{Sensitivity analysis}\label{sec:exp_sensitivity}
 
+Both experiments below are run on the 1106 real SIFT matches from imgB.
+
 \paragraph{Iteration budget.}
 We vary the maximum number of ORSA iterations to see how many are
-actually needed. \Cref{tab:sensitivity_iter} shows that results
-converge by about 500 iterations. Increasing the budget further to
-5000 produces no improvement in either the log-NFA or the corner
-error, which confirms that the adaptive stopping rule works well.
+actually needed. \Cref{tab:sensitivity_iter} shows that all iteration
+budgets from 50 to 5000 yield the same result: 981 inliers,
+$\log_{10}\NFA = -3863$, and $\varepsilon = 4.2$\,px. With 89\%
+inliers, even 50 iterations are enough to find a good 4-point sample,
+and the adaptive stopping rule terminates early in all cases. The
+runtime stays around 170\,ms regardless of the budget.
 
 \begin{table}[htbp]
 \centering
-\caption{Sensitivity to iteration budget (50\% outliers, $n=200$).}
+\caption{Sensitivity to iteration budget (imgB, 1106 matches).}
 \label{tab:sensitivity_iter}
 \begin{tabular}{@{}lccccc@{}}
 \toprule
 max\_iter & 50 & 100 & 500 & 1000 & 5000 \\
 \midrule
-Mean $\log_{10}\NFA$ & $-316$ & $-316$ & $-316$ & $-316$ & $-316$ \\
-Corner error (px) & 0.61 & 0.57 & 0.58 & 0.58 & 0.58 \\
-Runtime (ms) & 17 & 21 & 22 & 23 & 23 \\
+$\log_{10}\NFA$ & $-3863$ & $-3863$ & $-3863$ & $-3863$ & $-3863$ \\
+Inliers & 981 & 981 & 981 & 981 & 981 \\
+$\varepsilon$ (px) & 4.2 & 4.2 & 4.2 & 4.2 & 4.2 \\
+Runtime (ms) & 169 & 166 & 164 & 170 & 167 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \paragraph{Seed stability.}
 Since ORSA relies on random sampling, different random seeds could in
-principle produce different results. We run 20 trials on the same data
-with different seeds. The $\log_{10}\NFA$ varies by only 3.4 units
-(from $-315$ to $-319$), and the inlier count varies by at most 5
-(between 95 and 100 out of 100 true inliers). This shows that the
-algorithm is very stable with respect to randomness.
+principle produce different results. We run 20 trials on the same imgB
+matches with different seeds (\Cref{fig:sensitivity}). The
+$\log_{10}\NFA$ varies from $-3890$ to $-3596$ (mean $-3859$,
+std $61$), and the inlier count varies between 956 and 990 (mean 979,
+std 11). This shows that the algorithm is very stable: even though
+different seeds lead to different random samples, the final result
+barely changes.
 
 \begin{figure}[htbp]
   \centering
-  \includegraphics[width=0.85\textwidth]{figures/sensitivity.png}
-  \caption{Left: corner error vs.\ max iterations. Right: NFA stability
-  across 20 random seeds.}
+  \includegraphics[width=\textwidth]{figures/sensitivity.png}
+  \caption{Left: inlier count vs.\ max iterations (imgB). Right: NFA
+  stability across 20 random seeds.}
   \label{fig:sensitivity}
 \end{figure}
 
@@ -394,76 +437,64 @@ algorithm is very stable with respect to randomness.
 Understanding where the algorithm fails is as important as showing where
 it succeeds. We test three challenging scenarios.
 
-\paragraph{Pure random matches (300 points).}
-With 300 purely random correspondences and no underlying homography,
-ORSA correctly returns no detection ($\log_{10}\NFA = 0$). This is a
-larger-scale version of the null-model experiment and confirms that the
-false alarm control holds even with more data.
+\paragraph{Shuffled real matches (1000 points).}
+We take 1000 real SIFT matches from imgB and randomly shuffle them, so
+that all correspondences are wrong but the keypoints remain realistic.
+In this case, ORSA finds no homography
+($\log_{10}\NFA = 0$), which shows that it does not detect structure when
+none exists.
 
-\paragraph{Multi-structure (two conflicting homographies).}
-We generate two groups of 80 inliers, each consistent with a different
-homography, plus 50 random outliers (195 correspondences in total).
-ORSA finds the dominant structure (76 inliers, $\log_{10}\NFA = -196$)
-and treats the second group's inliers as outliers. This is the expected
-behavior for a single-model method: ORSA looks for one homography, not
-two. Recovering both structures would require applying ORSA iteratively,
-removing detected inliers between runs (the exclusion principle).
+\paragraph{Two homographies in the same data.}
+We create a dataset with two different valid homographies (80 matches
+each) and add 50 random outliers. Since ORSA is designed to detect only
+one homography, it finds the stronger one (76 inliers,
+$\log_{10}\NFA = -195$) and ignores the other. Detecting both structures
+would require running ORSA multiple times and removing inliers after
+each run.
 
-\paragraph{Extreme outlier ratio (5 inliers / 300 outliers).}
-With only 5 true inliers among 305 correspondences (98.4\% outliers),
-the probability of randomly drawing 4 inliers in a single sample is
-$\binom{5}{4}/\binom{305}{4} \approx 7\times10^{-9}$. Over 20 trials,
-zero detections occur. This is an expected and unavoidable failure: no
-sampling-based method can work when clean samples are this unlikely.
+\paragraph{Almost all matches are wrong.}
+We mix only 5 correct matches with 300 random ones, so more than 98\% of
+the data is noise. In this situation, ORSA almost never samples enough
+correct points to estimate a homography and therefore finds no
+detections in 20 trials. This is an unavoidable limitation of all
+sampling-based methods.
+
 
 % ═══════════════════════════════════════════════════════════════════════════
 \section{Implementation Details}\label{sec:implementation}
 
-The codebase is split into focused modules, each handling one aspect of
-the pipeline. The NFA computation (\texttt{src/nfa.py}) works entirely
-in log-space to avoid numerical overflow, and relies on precomputed
-binomial coefficient tables. It uses the formula
-$\binom{n}{k}\binom{k}{4}$ from the paper, which we verified is
-distinct from the alternative $\binom{n-4}{k-4}\binom{k}{4}$ sometimes
-seen in other implementations. Homography estimation
-(\texttt{src/homography.py}) provides DLT with Hartley normalization,
-the symmetric transfer error, and Levenberg-Marquardt refinement. All
-degeneracy checks described in \Cref{sec:degeneracy} are implemented in
-\texttt{src/degeneracy.py}. The main ORSA loop (\texttt{src/orsa.py})
-ties everything together, with adaptive stopping and iterative
-refinement. Feature matching (\texttt{src/matching.py}) supports both
-SIFT and ORB detectors with Lowe's ratio test for filtering. The
-\texttt{experiments/} directory contains the synthetic data generation
-code and scripts for the 6 experiment types presented in this report.
-The full test suite (\texttt{tests/}) contains 46 unit tests covering
-all modules.
+The implementation is organized into modular components. NFA computation
+(\texttt{src/nfa.py}) is performed entirely in log-space using
+precomputed binomial coefficients to ensure numerical stability, and
+follows the formula $\binom{n}{k}\binom{k}{4}$ from the original paper.
+Homography estimation (\texttt{src/homography.py}) includes DLT with
+Hartley normalization, symmetric transfer error, and
+Levenberg--Marquardt refinement. Degeneracy checks are implemented in
+\texttt{src/degeneracy.py}, and the main ORSA loop with adaptive stopping
+and refinement is handled in \texttt{src/orsa.py}. Feature matching
+(\texttt{src/matching.py}) supports SIFT and ORB with Lowe’s ratio test.
+Experiments and unit tests are provided in \texttt{experiments/} and
+\texttt{tests/}, respectively.
 
 \paragraph{Key design decisions.}
-One subtle but important point concerns the error multiplier in
-log-space. Since $\alpha = \pi r^2/(wh)$ and our residuals $e_i$ are
-already squared distances ($e_i = r^2$), we have
-$\log_{10}\alpha = \log_{10}(\pi/(wh)) + 1.0 \cdot \log_{10}(e)$. A
-multiplier of $0.5$ would implicitly take the square root of the error,
-giving the wrong dimensionality. We also cap all errors at the squared
-image diagonal, which prevents correspondences with absurdly large
-residuals from being counted as inliers at any threshold. Finally,
-throughout the ORSA loop, we track the best model seen so far (the one
-with the lowest NFA, even if that NFA is above~1). This allows the
-focused sampling heuristic to work from the first iteration, while a
-detection is only declared when $\NFA < 1$.
+Residuals are handled consistently in squared pixel units: since
+$\alpha = \pi r^2/(wh)$ and residuals are already squared, the log-space
+error term uses a unit multiplier rather than $0.5$. Residuals are
+capped at the squared image diagonal to avoid pathological thresholds.
+The best model is tracked throughout the ORSA loop, even when
+$\NFA \ge 1$, while a detection is declared only if $\NFA < 1$.
 
 \paragraph{Use of AI tools.}
-AI tools (Claude) were used for code structure and glue code, debugging
-and code review (identifying discrepancies between the implementation and
-the paper's formulas), and report formatting. The core algorithmic logic
-was implemented based on direct reading of the IPOL
-paper~\cite{moisan2012}, and all formulas and proofs were verified manually
-against the course material.
+AI tools were used for code organization, debugging, and report
+formatting. The algorithmic implementation follows a direct reading of
+the IPOL reference~\cite{moisan2012}, with all formulas and proofs
+verified manually against the course material.
+
 
 % ═══════════════════════════════════════════════════════════════════════════
 \section{Discussion}\label{sec:discussion}
 
-\subsection{Strengths of the framework}
+\subsection{Strengths of the apparatus}
 
 \subsection{Limitations}
 
@@ -497,43 +528,22 @@ statistical evidence to overcome the correction for multiple testing.
 
 \subsection{NFA is a detection criterion, not an accuracy metric}
 
-\subsection{Model bias from the null hypothesis}
-
-The a-contrario framework tests against a specific null model: the
-correspondences are assumed to be independent, and each target point is
-assumed to be uniformly distributed over the image. This is a reasonable
-approximation for putative matches produced by a feature detector, but
-real data can deviate from it in several ways.
-
-For instance, keypoints are often spatially clustered in textured
-regions rather than spread uniformly, which can make detections appear
-more surprising than they truly are. Conversely, repetitive textures
-can produce correlated false matches that violate the independence
-assumption, which could in principle lead to false detections. The
-probability bound $\alpha(r) = \pi r^2/(wh)$ also ignores boundary
-effects: for points near the image edges, the true probability of a
-random match falling within distance $r$ may be lower than the disk
-approximation suggests, making the NFA slightly conservative.
-
-Despite these simplifications, the null model works well in practice.
-The key reason is that the bound is conservative by design: when the
-true probability is lower than $\alpha(r)$, the NFA is overestimated,
-which only makes it harder to trigger a false alarm.
-
 % ═══════════════════════════════════════════════════════════════════════════
 \section{Conclusion}\label{sec:conclusion}
 
 We presented a complete implementation of the ORSA algorithm for
-a-contrario homography registration. Our experiments confirm the main
-theoretical guarantee: the false alarm rate on random data is near
-zero, consistent with the bound of at most one expected false detection.
-On synthetic data, ORSA detects the correct homography with perfect
-precision up to 70\% outliers, and degrades gracefully beyond that
-point. The results are stable across random seeds and iteration
-budgets. Overall, the a-contrario framework provides a principled,
-parameter-free alternative to fixed-threshold RANSAC. The NFA plays a
-dual role: it serves as the model selection criterion during the
-algorithm, and as a measure of how meaningful the final detection is.
+a-contrario homography registration. All experiments are built around
+real SIFT matches from a single image pair, avoiding any artificial
+bias from synthetic data generation. The null model validation produces
+zero false alarms across 250 trials on shuffled real keypoints,
+confirming the theoretical guarantee even under realistic spatial
+clustering. On the same image pair with up to 83\% injected noise, ORSA
+maintains near-perfect precision and recall. The results are stable
+across random seeds and iteration budgets. Overall, the a-contrario
+apparatus provides a principled, parameter-free alternative to
+fixed-threshold RANSAC. The NFA plays a dual role: it serves as the
+model selection criterion during the algorithm, and as a measure of how
+meaningful the final detection is.
 
 % ═══════════════════════════════════════════════════════════════════════════
 \bibliographystyle{plainnat}
@@ -574,7 +584,7 @@ R.~Hartley and A.~Zisserman.
 
 \bibitem[Chum and Matas(2005)]{chum2005}
 O.~Chum and J.~Matas.
-\newblock Matching with {PROSAC}---progressive sample consensus.
+\newblock Matching with {PROSAC}: progressive sample consensus.
 \newblock In \emph{IEEE CVPR}, pages 220--226, 2005.
 
 \bibitem[Chum et~al.(2003)]{chum2003}

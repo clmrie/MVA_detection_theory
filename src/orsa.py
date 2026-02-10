@@ -49,6 +49,7 @@ class OrsaResult:
     n_matches: int                 # total input matches
     reprojection_errors: np.ndarray | None = None  # errors on inliers
     log_nfa_history: list = field(default_factory=list)  # best log_nfa over iterations
+    raw_log_nfa: float = 0.0  # log10(NFA) before clamping (kept even when no detection)
 
 
 def orsa_homography(
@@ -266,6 +267,7 @@ def orsa_homography(
     # NFA < 1 means log_nfa < 0 which means the structure we found is
     # unlikely to arise by chance -- thats the whole point of a-contrario
     is_meaningful = best_log_nfa < 0
+    raw_log_nfa = best_log_nfa  # preserve before clamping
     if not is_meaningful:
         best_H = None
         best_inlier_mask = np.zeros(n, dtype=bool)
@@ -294,6 +296,7 @@ def orsa_homography(
         n_matches=n,
         reprojection_errors=reproj_errors,
         log_nfa_history=log_nfa_history,
+        raw_log_nfa=raw_log_nfa,
     )
 
 

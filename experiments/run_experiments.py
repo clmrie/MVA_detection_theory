@@ -67,64 +67,132 @@ def save_result(result_dict: dict, path: str):
     print(f"  Saved: {path}")
 
 
+# ─── Helper: load imgB matches and reference ORSA result ──────────────────
+
+_imgB_cache = {}
+
+
+def _load_imgB_matches(data_dir: str):
+    """Load imgB pair, run SIFT matching, and compute reference ORSA result.
+
+    Returns a dict with pts1, pts2, img_shape1, img_shape2, and ref_result.
+    Cached so repeated calls don't recompute.
+    """
+    if data_dir in _imgB_cache:
+        return _imgB_cache[data_dir]
+
+    pairs = _find_image_pairs(data_dir, prefix='imgB')
+    if not pairs:
+        raise FileNotFoundError(
+            f"No imgB image pair found in {data_dir}. "
+            "Place imgB_1.jpg and imgB_2.jpg in the data directory."
+        )
+    _, path1, path2 = pairs[0]
+    img1 = cv2.imread(path1)
+    img2 = cv2.imread(path2)
+    if img1 is None or img2 is None:
+        raise FileNotFoundError(f"Could not read images: {path1}, {path2}")
+
+    match_result = detect_and_match(img1, img2, method='sift')
+    ref_result = orsa_homography(
+        match_result.pts1, match_result.pts2,
+        img1.shape[:2], img2.shape[:2],
+        max_iter=1000, seed=42,
+    )
+    print(f"  imgB reference: {match_result.n_matches} matches, "
+          f"{ref_result.n_inliers} inliers, "
+          f"log10(NFA) = {ref_result.log_nfa:.1f}")
+
+    data = {
+        'pts1': match_result.pts1,
+        'pts2': match_result.pts2,
+        'img_shape1': img1.shape[:2],
+        'img_shape2': img2.shape[:2],
+        'img1': img1,
+        'img2': img2,
+        'ref_result': ref_result,
+    }
+    _imgB_cache[data_dir] = data
+    return data
+
+
 # Experiment 1: Null Model Validation
 
-def run_null_model(output_dir: str):
-    """Verify that ORSA does NOT detect homographies in purely random matches.
+def run_null_model(output_dir: str, data_dir: str):
+    """Verify that ORSA does NOT detect homographies when correspondences
+    are randomly shuffled, using real SIFT keypoints from imgB.
 
-    This is the most important sanity check -- if our NFA computation is
-    correct we should almost never get a false alarm on pure noise
+    We shuffle pts2 to destroy all true correspondences while preserving
+    the realistic spatial distribution of keypoints.
     """
-    print("\n=== Experiment 1: Null Model Validation ===")
-    img_shape = (480, 640)
-    H_dummy = np.eye(3)  # not used for outliers
-    n_outlier_counts = [50, 100, 200, 500]
+    print("\n=== Experiment 1: Null Model Validation (shuffled real keypoints) ===")
+    imgB = _load_imgB_matches(data_dir)
+    pts1_all, pts2_all = imgB['pts1'], imgB['pts2']
+    shape1, shape2 = imgB['img_shape1'], imgB['img_shape2']
+    n_total = len(pts1_all)
+
+    subsample_sizes = [50, 100, 200, 500, 1000]
     n_trials = 50
     results = []
 
-    for n_outliers in n_outlier_counts:
-        log_nfas = []
+    for n in subsample_sizes:
+        if n > n_total:
+            print(f"  Skipping n={n} (only {n_total} matches available)")
+            continue
+        raw_log_nfas = []
         for trial in range(n_trials):
-            pts1, pts2, _ = generate_synthetic_matches(
-                n_inliers=0, n_outliers=n_outliers,
-                H_true=H_dummy, seed=trial * 1000 + n_outliers,
-                img_shape=img_shape,
-            )
-            result = orsa_homography(
-                pts1, pts2, img_shape, img_shape,
-                max_iter=500, seed=trial,
-            )
-            log_nfas.append(result.log_nfa)
+            rng = np.random.default_rng(trial * 1000 + n)
+            idx = rng.choice(n_total, size=n, replace=False)
+            pts1_sub = pts1_all[idx]
+            pts2_sub = pts2_all[idx]
+            # Shuffle pts2 to break all true correspondences
+            pts2_shuffled = pts2_sub[rng.permutation(n)]
 
-        log_nfas = np.array(log_nfas)
-        n_false_alarms = np.sum(log_nfas < 0)
+            result = orsa_homography(
+                pts1_sub, pts2_shuffled, shape1, shape2,
+                max_iter=500, seed=trial * 1000 + n,
+            )
+            raw_log_nfas.append(result.raw_log_nfa)
+
+        raw_log_nfas = np.array(raw_log_nfas)
+        finite_mask = np.isfinite(raw_log_nfas)
+        finite_vals = raw_log_nfas[finite_mask]
+        n_false_alarms = int(np.sum(raw_log_nfas < 0))
+        n_no_model = int(np.sum(~finite_mask))
+        mean_val = float(np.mean(finite_vals)) if len(finite_vals) > 0 else float('inf')
+        min_val = float(np.min(finite_vals)) if len(finite_vals) > 0 else float('inf')
         print(
-            f"  n_outliers={n_outliers}: "
+            f"  n={n}: "
             f"false alarms = {n_false_alarms}/{n_trials}, "
-            f"mean log_NFA = {np.mean(log_nfas):.2f}, "
-            f"min log_NFA = {np.min(log_nfas):.2f}"
+            f"mean raw log_NFA = {mean_val:.2f}, "
+            f"min raw log_NFA = {min_val:.2f}"
+            f"{f', no model tested = {n_no_model}' if n_no_model > 0 else ''}"
         )
         results.append({
-            'n_outliers': n_outliers,
+            'n': n,
             'n_trials': n_trials,
-            'false_alarms': int(n_false_alarms),
-            'log_nfas': log_nfas.tolist(),
-            'mean_log_nfa': float(np.mean(log_nfas)),
-            'min_log_nfa': float(np.min(log_nfas)),
+            'false_alarms': n_false_alarms,
+            'n_no_model': n_no_model,
+            'raw_log_nfas': finite_vals.tolist(),
+            'mean_raw_log_nfa': mean_val,
+            'min_raw_log_nfa': min_val,
         })
 
-    save_result({'experiment': 'null_model', 'results': results},
+    save_result({'experiment': 'null_model', 'source': 'imgB_shuffled',
+                 'results': results},
                 os.path.join(output_dir, 'null_model.json'))
 
-    # Plot distribution of log_NFA
+    # Plot distribution of raw log_NFA
     fig, ax = plt.subplots(1, 1, figsize=(10, 6))
     for r in results:
-        ax.hist(r['log_nfas'], bins=30, alpha=0.6,
-                label=f"n={r['n_outliers']}")
-    ax.axvline(x=0, color='red', linestyle='--', linewidth=2, label='NFA = 1')
-    ax.set_xlabel('log$_{10}$(NFA)', fontsize=12)
+        ax.hist(r['raw_log_nfas'], bins=30, alpha=0.6,
+                label=f"n={r['n']}")
+    ax.axvline(x=0, color='red', linestyle='--', linewidth=2,
+               label='Detection threshold (NFA = 1)')
+    ax.set_xlabel('log$_{10}$(NFA$_{\\mathrm{min}}$)', fontsize=12)
     ax.set_ylabel('Count', fontsize=12)
-    ax.set_title('Null Model: NFA Distribution (should be > 0)', fontsize=14)
+    ax.set_title('Null Model: best log$_{10}$(NFA) per trial '
+                 '(shuffled real keypoints)', fontsize=14)
     ax.legend()
     fig.tight_layout()
     fig.savefig(os.path.join(output_dir, 'null_model.png'), dpi=150)
@@ -132,120 +200,150 @@ def run_null_model(output_dir: str):
     print(f"  Saved: {os.path.join(output_dir, 'null_model.png')}")
 
 
-# Experiment 2: Simple Synthetic Case
+# Experiment 2: Outlier Injection on Real Data
 
-def run_simple_synthetic(output_dir: str):
-    """Synthetic homography with varying outlier ratios.
+def run_outlier_injection(output_dir: str, data_dir: str):
+    """Test ORSA robustness by injecting random outliers into real imgB matches.
 
-    We use a known ground truth H so we can measure exactly how well
-    ORSA recovers it as we crank up the outlier ratio from 10% to 90%
+    We start with the real SIFT matches from imgB and progressively add
+    random correspondences. The ORSA result on clean data serves as
+    pseudo ground-truth for measuring inlier recovery and H consistency.
     """
-    print("\n=== Experiment 2: Simple Synthetic Case ===")
-    img_shape = (480, 640)
-    homographies = make_test_homographies(img_shape)
-    H_true = homographies['perspective_mild']
-    n_total = 200
-    noise_sigma = 1.0
-    outlier_ratios = [0.1, 0.3, 0.5, 0.7, 0.9]
-    n_trials = 10
+    print("\n=== Experiment 2: Outlier Injection (imgB) ===")
+    imgB = _load_imgB_matches(data_dir)
+    pts1_real, pts2_real = imgB['pts1'], imgB['pts2']
+    shape1, shape2 = imgB['img_shape1'], imgB['img_shape2']
+    ref_result = imgB['ref_result']
+    n_real = len(pts1_real)
+    ref_inlier_mask = ref_result.inlier_mask  # which of the originals are inliers
+    n_ref_inliers = int(np.sum(ref_inlier_mask))
 
+    # Injection counts: add N random correspondences on top of the real ones
+    injection_counts = [0, 250, 550, 1100, 2750, 5500]
+    n_trials = 10
     results = []
-    for ratio in outlier_ratios:
-        n_outliers = int(n_total * ratio)
-        n_inliers = n_total - n_outliers
+
+    for n_inject in injection_counts:
+        n_total = n_real + n_inject
+        effective_noise = n_inject / n_total if n_total > 0 else 0
         trial_results = []
 
         for trial in range(n_trials):
-            pts1, pts2, gt_mask = generate_synthetic_matches(
-                n_inliers=n_inliers, n_outliers=n_outliers,
-                H_true=H_true, noise_sigma=noise_sigma,
-                img_shape=img_shape, seed=trial * 100 + int(ratio * 100),
-            )
+            rng = np.random.default_rng(trial * 1000 + n_inject)
+
+            if n_inject > 0:
+                # Generate random correspondences within image bounds
+                h1, w1 = shape1
+                h2, w2 = shape2
+                noise_pts1 = np.column_stack([
+                    rng.uniform(0, w1, n_inject),
+                    rng.uniform(0, h1, n_inject),
+                ])
+                noise_pts2 = np.column_stack([
+                    rng.uniform(0, w2, n_inject),
+                    rng.uniform(0, h2, n_inject),
+                ])
+                pts1 = np.vstack([pts1_real, noise_pts1])
+                pts2 = np.vstack([pts2_real, noise_pts2])
+            else:
+                pts1, pts2 = pts1_real.copy(), pts2_real.copy()
+
             result = orsa_homography(
-                pts1, pts2, img_shape, img_shape,
+                pts1, pts2, shape1, shape2,
                 max_iter=1000, seed=trial,
             )
 
-            # we compare ORSA's inlier mask against the ground truth to see
-            # if it correctly separates inliers from outliers
+            # Inlier recovery: how many of the original ref inliers are
+            # still found as inliers?
             if result.n_inliers > 0:
-                tp = np.sum(result.inlier_mask & gt_mask)
-                fp = np.sum(result.inlier_mask & ~gt_mask)
-                fn = np.sum(~result.inlier_mask & gt_mask)
-                precision = tp / (tp + fp) if (tp + fp) > 0 else 0
-                recall = tp / (tp + fn) if (tp + fn) > 0 else 0
+                # The first n_real entries correspond to original matches
+                orsa_mask_on_real = result.inlier_mask[:n_real]
+                recovered = int(np.sum(orsa_mask_on_real & ref_inlier_mask))
+                noise_as_inlier = int(np.sum(result.inlier_mask[n_real:]))
+                precision = recovered / (recovered + noise_as_inlier) \
+                    if (recovered + noise_as_inlier) > 0 else 0
+                recall = recovered / n_ref_inliers if n_ref_inliers > 0 else 0
             else:
+                recovered = 0
+                noise_as_inlier = 0
                 precision = 0
                 recall = 0
 
-            # Homography error
-            h_error = {}
-            if result.H is not None:
-                h_error = evaluate_homography(result.H, H_true, img_shape)
+            # H consistency
+            corner_error = np.nan
+            if result.H is not None and ref_result.H is not None:
+                h_err = evaluate_homography(result.H, ref_result.H, shape1)
+                corner_error = h_err['corner_error_mean']
 
             trial_results.append({
-                'precision': float(precision),
-                'recall': float(recall),
+                'detected': result.log_nfa < 0,
                 'log_nfa': float(result.log_nfa),
                 'n_inliers': result.n_inliers,
+                'recovered': recovered,
+                'noise_as_inlier': noise_as_inlier,
+                'precision': float(precision),
+                'recall': float(recall),
+                'corner_error': float(corner_error),
                 'epsilon': float(result.epsilon),
                 'runtime': float(result.runtime),
-                'h_error': h_error,
-                'detected': result.log_nfa < 0,
             })
 
-        precisions = [t['precision'] for t in trial_results]
-        recalls = [t['recall'] for t in trial_results]
         detected = sum(1 for t in trial_results if t['detected'])
+        mean_recall = np.mean([t['recall'] for t in trial_results])
+        mean_prec = np.mean([t['precision'] for t in trial_results])
         print(
-            f"  outlier_ratio={ratio:.0%}: "
+            f"  +{n_inject} noise ({effective_noise:.0%} extra): "
             f"detected={detected}/{n_trials}, "
-            f"precision={np.mean(precisions):.3f} +/- {np.std(precisions):.3f}, "
-            f"recall={np.mean(recalls):.3f} +/- {np.std(recalls):.3f}"
+            f"precision={mean_prec:.3f}, "
+            f"recall={mean_recall:.3f}"
         )
         results.append({
-            'outlier_ratio': ratio,
-            'n_inliers_true': n_inliers,
-            'n_outliers': n_outliers,
+            'n_injected': n_inject,
+            'n_total': n_total,
+            'effective_noise_ratio': float(effective_noise),
             'trials': trial_results,
         })
 
-    save_result({'experiment': 'simple_synthetic', 'H_true': H_true.tolist(),
-                 'noise_sigma': noise_sigma, 'results': results},
-                os.path.join(output_dir, 'simple_synthetic.json'))
+    save_result({
+        'experiment': 'outlier_injection', 'source': 'imgB',
+        'n_real_matches': n_real, 'n_ref_inliers': n_ref_inliers,
+        'results': results,
+    }, os.path.join(output_dir, 'outlier_injection.json'))
 
-    # Plot precision/recall vs outlier ratio
+    # Plot
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
-    ratios = [r['outlier_ratio'] for r in results]
+    ratios = [r['effective_noise_ratio'] for r in results]
     mean_prec = [np.mean([t['precision'] for t in r['trials']]) for r in results]
     mean_rec = [np.mean([t['recall'] for t in r['trials']]) for r in results]
     std_prec = [np.std([t['precision'] for t in r['trials']]) for r in results]
     std_rec = [np.std([t['recall'] for t in r['trials']]) for r in results]
 
-    ax1.errorbar(ratios, mean_prec, yerr=std_prec, marker='o', capsize=5, label='Precision')
-    ax1.errorbar(ratios, mean_rec, yerr=std_rec, marker='s', capsize=5, label='Recall')
-    ax1.set_xlabel('Outlier ratio', fontsize=12)
+    ax1.errorbar(ratios, mean_prec, yerr=std_prec, marker='o', capsize=5,
+                 label='Precision')
+    ax1.errorbar(ratios, mean_rec, yerr=std_rec, marker='s', capsize=5,
+                 label='Recall')
+    ax1.set_xlabel('Fraction of injected noise', fontsize=12)
     ax1.set_ylabel('Score', fontsize=12)
-    ax1.set_title('Precision / Recall vs. Outlier Ratio', fontsize=13)
+    ax1.set_title('Inlier Recovery vs. Noise Injection', fontsize=13)
     ax1.legend()
     ax1.set_ylim(-0.05, 1.05)
     ax1.grid(True, alpha=0.3)
 
-    # Corner error
-    mean_corner_err = []
+    mean_corner = []
     for r in results:
-        errs = [t['h_error'].get('corner_error_mean', np.nan) for t in r['trials'] if t['detected']]
-        mean_corner_err.append(np.mean(errs) if errs else np.nan)
-    ax2.plot(ratios, mean_corner_err, 'o-', color='purple')
-    ax2.set_xlabel('Outlier ratio', fontsize=12)
-    ax2.set_ylabel('Mean corner error (px)', fontsize=12)
-    ax2.set_title('Homography Accuracy vs. Outlier Ratio', fontsize=13)
+        errs = [t['corner_error'] for t in r['trials']
+                if t['detected'] and not np.isnan(t['corner_error'])]
+        mean_corner.append(np.mean(errs) if errs else np.nan)
+    ax2.plot(ratios, mean_corner, 'o-', color='purple')
+    ax2.set_xlabel('Fraction of injected noise', fontsize=12)
+    ax2.set_ylabel('Corner error vs. H$_{\\mathrm{ref}}$ (px)', fontsize=12)
+    ax2.set_title('Homography Consistency vs. Noise Injection', fontsize=13)
     ax2.grid(True, alpha=0.3)
 
     fig.tight_layout()
-    fig.savefig(os.path.join(output_dir, 'simple_synthetic.png'), dpi=150)
+    fig.savefig(os.path.join(output_dir, 'outlier_injection.png'), dpi=150)
     plt.close(fig)
-    print(f"  Saved: {os.path.join(output_dir, 'simple_synthetic.png')}")
+    print(f"  Saved: {os.path.join(output_dir, 'outlier_injection.png')}")
 
 
 # Experiment 3: Real Images — Easy Case
@@ -392,36 +490,40 @@ def run_real_hard(output_dir: str, data_dir: str):
 def run_failure_case(output_dir: str, data_dir: str):
     """Cases where ORSA should NOT find a meaningful homography.
 
-    We test pure noise, multi-structure scenes, and extreme outlier ratios
-    to make sure ORSA correctly says "no" when there is nothing to find
+    We test shuffled real matches, multi-structure scenes, and extreme
+    outlier ratios to make sure ORSA correctly says "no" when there is
+    nothing to find.
     """
-    print("\n=== Experiment 5: Failure Case ===")
+    print("\n=== Experiment 5: Failure Cases ===")
+    imgB = _load_imgB_matches(data_dir)
+    pts1_all, pts2_all = imgB['pts1'], imgB['pts2']
+    shape1, shape2 = imgB['img_shape1'], imgB['img_shape2']
+    ref_result = imgB['ref_result']
+    ref_inlier_mask = ref_result.inlier_mask
 
-    # Sub-experiment 5a: purely random matches (no real geometric relation)
-    print("  5a: Random matches (no geometry)")
-    img_shape = (480, 640)
-    pts1, pts2, _ = generate_synthetic_matches(
-        n_inliers=0, n_outliers=300, H_true=np.eye(3),
-        img_shape=img_shape, seed=12345,
-    )
+    # 5a: Shuffled real matches (1000 points) — no geometry
+    print("  5a: Shuffled real matches (1000 pts from imgB)")
+    rng = np.random.default_rng(12345)
+    idx = rng.choice(len(pts1_all), size=1000, replace=False)
+    pts1_sub = pts1_all[idx]
+    pts2_shuffled = pts2_all[idx][rng.permutation(1000)]
     result = orsa_homography(
-        pts1, pts2, img_shape, img_shape,
+        pts1_sub, pts2_shuffled, shape1, shape2,
         max_iter=1000, seed=42,
     )
     print(
         f"    log10(NFA) = {result.log_nfa:.2f}, "
-        f"inliers = {result.n_inliers}/300, "
+        f"inliers = {result.n_inliers}/1000, "
         f"detection = {'YES' if result.log_nfa < 0 else 'NO (correct)'}"
     )
     save_result({
-        'experiment': 'failure_random', 'n_matches': 300,
+        'experiment': 'failure_shuffled', 'n_matches': 1000,
         'log_nfa': float(result.log_nfa), 'detected': result.log_nfa < 0,
-    }, os.path.join(output_dir, 'failure_random.json'))
+    }, os.path.join(output_dir, 'failure_shuffled.json'))
 
-    # two planes with different homographies mixed together
-    # ORSA should find the dominant one and ignore the other
-    # this is actually a success case not a failure but its good to show
+    # 5b: Multi-structure — two conflicting homographies (synthetic)
     print("  5b: Multi-structure — two conflicting homographies")
+    img_shape = (480, 640)
     H1 = np.array([[1.05, 0.08, 15], [-0.03, 0.98, 10], [0.0001, 0.00005, 1]])
     H2 = np.array([[0.95, -0.1, -20], [0.06, 1.05, 15], [-0.0002, 0.0001, 1]])
     pts1_a, pts2_a, _ = generate_synthetic_matches(
@@ -450,21 +552,30 @@ def run_failure_case(output_dir: str, data_dir: str):
         'n_inliers': result.n_inliers,
     }, os.path.join(output_dir, 'multi_structure.json'))
 
-    # only 5 real inliers buried in 300 outliers -- way too few for ORSA
-    # to find anything meaningful, so it should correctly report no detection
-    print("  5c: Extreme outlier ratio (5 inliers / 300 outliers)")
+    # 5c: Extreme outlier — 5 real inlier matches + 300 random
+    print("  5c: Extreme outlier (5 real inliers + 300 random)")
+    inlier_indices = np.where(ref_inlier_mask)[0]
     n_trials_failure = 20
     n_detected = 0
     log_nfas_failure = []
-    H_fail = make_test_homographies(img_shape)['perspective_mild']
     for trial in range(n_trials_failure):
-        pts1_f, pts2_f, gt_f = generate_synthetic_matches(
-            n_inliers=5, n_outliers=300,
-            H_true=H_fail, noise_sigma=2.0,
-            img_shape=img_shape, seed=trial * 31 + 7777,
-        )
+        rng_f = np.random.default_rng(trial * 31 + 7777)
+        # Pick 5 real inlier correspondences
+        chosen = rng_f.choice(inlier_indices, size=5, replace=False)
+        pts1_real5 = pts1_all[chosen]
+        pts2_real5 = pts2_all[chosen]
+        # Generate 300 random correspondences
+        h1, w1 = shape1
+        h2, w2 = shape2
+        noise_pts1 = np.column_stack([
+            rng_f.uniform(0, w1, 300), rng_f.uniform(0, h1, 300)])
+        noise_pts2 = np.column_stack([
+            rng_f.uniform(0, w2, 300), rng_f.uniform(0, h2, 300)])
+        pts1_f = np.vstack([pts1_real5, noise_pts1])
+        pts2_f = np.vstack([pts2_real5, noise_pts2])
+
         result_f = orsa_homography(
-            pts1_f, pts2_f, img_shape, img_shape,
+            pts1_f, pts2_f, shape1, shape2,
             max_iter=1000, seed=trial,
         )
         log_nfas_failure.append(result_f.log_nfa)
@@ -478,101 +589,53 @@ def run_failure_case(output_dir: str, data_dir: str):
     save_result({
         'experiment': 'failure_extreme_outliers',
         'n_inliers_true': 5,
-        'n_outliers': 300,
+        'n_random': 300,
         'n_trials': n_trials_failure,
         'n_detected': n_detected,
         'log_nfas': [float(x) for x in log_nfas_failure],
     }, os.path.join(output_dir, 'failure_extreme_outliers.json'))
 
-    # Real failure images if available
-    pairs = _find_image_pairs(data_dir, prefix='failure')
-    if not pairs:
-        print("  No failure image pairs found in data directory.")
-    for name, img1_path, img2_path in pairs:
-        print(f"  Processing: {name}")
-        img1 = cv2.imread(img1_path)
-        img2 = cv2.imread(img2_path)
-        if img1 is None or img2 is None:
-            continue
-        match_result = detect_and_match(img1, img2, method='sift')
-        if match_result.n_matches < 10:
-            continue
-        result = orsa_homography(
-            match_result.pts1, match_result.pts2,
-            img1.shape[:2], img2.shape[:2],
-            max_iter=1000, seed=42,
-        )
-        print(
-            f"    log10(NFA) = {result.log_nfa:.2f}, "
-            f"inliers = {result.n_inliers}/{result.n_matches}"
-        )
-
 
 # Experiment 6: Sensitivity Analysis
 
-def run_sensitivity(output_dir: str):
+def run_sensitivity(output_dir: str, data_dir: str):
     """Check that ORSA gives consistent results across different seeds
-    and that increasing max_iter improves accuracy up to a point."""
-    print("\n=== Experiment 6: Sensitivity Analysis ===")
-    img_shape = (480, 640)
-    H_true = make_test_homographies(img_shape)['perspective_mild']
-    n_total = 200
-    outlier_ratio = 0.5
-    n_inliers = int(n_total * (1 - outlier_ratio))
-    n_outliers = n_total - n_inliers
-
-    # 6a: Vary max_iter
+    and that increasing max_iter improves accuracy, using real imgB matches."""
+    print("\n=== Experiment 6: Sensitivity Analysis (imgB) ===")
+    imgB = _load_imgB_matches(data_dir)
+    pts1, pts2 = imgB['pts1'], imgB['pts2']
+    shape1, shape2 = imgB['img_shape1'], imgB['img_shape2']
+    # 6a: Vary max_iter on real imgB matches
     print("  6a: Varying max_iter")
     max_iters = [50, 100, 500, 1000, 5000]
     iter_results = []
     for max_it in max_iters:
-        log_nfas = []
-        corner_errors = []
-        runtimes = []
-        for trial in range(10):
-            pts1, pts2, gt_mask = generate_synthetic_matches(
-                n_inliers=n_inliers, n_outliers=n_outliers,
-                H_true=H_true, noise_sigma=1.0,
-                img_shape=img_shape, seed=trial * 77,
-            )
-            result = orsa_homography(
-                pts1, pts2, img_shape, img_shape,
-                max_iter=max_it, seed=trial,
-            )
-            log_nfas.append(result.log_nfa)
-            runtimes.append(result.runtime)
-            if result.H is not None:
-                h_err = evaluate_homography(result.H, H_true, img_shape)
-                corner_errors.append(h_err['corner_error_mean'])
-            else:
-                corner_errors.append(np.nan)
-
+        result = orsa_homography(
+            pts1, pts2, shape1, shape2,
+            max_iter=max_it, seed=42,
+        )
         print(
             f"    max_iter={max_it}: "
-            f"mean log_NFA={np.mean(log_nfas):.1f}, "
-            f"mean corner_err={np.nanmean(corner_errors):.2f} px, "
-            f"mean runtime={np.mean(runtimes):.3f} s"
+            f"log_NFA={result.log_nfa:.1f}, "
+            f"n_inliers={result.n_inliers}, "
+            f"epsilon={result.epsilon:.1f} px, "
+            f"runtime={result.runtime*1000:.0f} ms"
         )
         iter_results.append({
             'max_iter': max_it,
-            'log_nfas': [float(x) for x in log_nfas],
-            'corner_errors': [float(x) for x in corner_errors],
-            'runtimes': [float(x) for x in runtimes],
+            'log_nfa': float(result.log_nfa),
+            'n_inliers': result.n_inliers,
+            'epsilon': float(result.epsilon),
+            'runtime': float(result.runtime),
         })
 
-    # same data different seeds -- if ORSA is stable the results should
-    # be very similar regardless of which random samples we draw
+    # 6b: same data, different seeds
     print("  6b: Seed stability (max_iter=1000)")
     seed_log_nfas = []
     seed_n_inliers = []
     for seed in range(20):
-        pts1, pts2, gt_mask = generate_synthetic_matches(
-            n_inliers=n_inliers, n_outliers=n_outliers,
-            H_true=H_true, noise_sigma=1.0,
-            img_shape=img_shape, seed=42,  
-        )
         result = orsa_homography(
-            pts1, pts2, img_shape, img_shape,
+            pts1, pts2, shape1, shape2,
             max_iter=1000, seed=seed,
         )
         seed_log_nfas.append(result.log_nfa)
@@ -589,7 +652,7 @@ def run_sensitivity(output_dir: str):
     )
 
     save_result({
-        'experiment': 'sensitivity',
+        'experiment': 'sensitivity', 'source': 'imgB',
         'iter_results': iter_results,
         'seed_log_nfas': [float(x) for x in seed_log_nfas],
         'seed_n_inliers': [int(x) for x in seed_n_inliers],
@@ -597,17 +660,20 @@ def run_sensitivity(output_dir: str):
 
     # Plot
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
-    bp_data = [r['corner_errors'] for r in iter_results]
-    bp_labels = [str(r['max_iter']) for r in iter_results]
-    ax1.boxplot(bp_data, labels=bp_labels)
+    iters = [r['max_iter'] for r in iter_results]
+    nfas = [r['log_nfa'] for r in iter_results]
+    n_inl = [r['n_inliers'] for r in iter_results]
+    ax1.plot(iters, n_inl, 'o-', color='steelblue')
     ax1.set_xlabel('max_iter', fontsize=12)
-    ax1.set_ylabel('Corner error (px)', fontsize=12)
-    ax1.set_title('Accuracy vs. max_iter', fontsize=13)
+    ax1.set_ylabel('Number of inliers', fontsize=12)
+    ax1.set_title('Inlier count vs. max_iter (imgB)', fontsize=13)
+    ax1.set_xscale('log')
+    ax1.grid(True, alpha=0.3)
 
     ax2.hist(seed_log_nfas, bins=15, alpha=0.7, color='steelblue')
     ax2.set_xlabel('log$_{10}$(NFA)', fontsize=12)
     ax2.set_ylabel('Count', fontsize=12)
-    ax2.set_title('NFA Stability Across Seeds (same data)', fontsize=13)
+    ax2.set_title('NFA Stability Across 20 Seeds (imgB)', fontsize=13)
 
     fig.tight_layout()
     fig.savefig(os.path.join(output_dir, 'sensitivity.png'), dpi=150)
@@ -709,8 +775,9 @@ def _compute_nfa_curve(result, match_result, img1, img2):
 def main():
     parser = argparse.ArgumentParser(description='ORSA Homography Experiments')
     parser.add_argument('--experiment', type=str, default='all',
-                        choices=['all', 'null', 'synthetic', 'real_easy',
-                                 'real_hard', 'failure', 'sensitivity'],
+                        choices=['all', 'null', 'outlier_injection',
+                                 'real_easy', 'real_hard', 'failure',
+                                 'sensitivity'],
                         help='Which experiment to run')
     parser.add_argument('--output-dir', type=str, default='experiments/results',
                         help='Output directory for results')
@@ -721,12 +788,12 @@ def main():
     os.makedirs(args.output_dir, exist_ok=True)
 
     experiments = {
-        'null': lambda: run_null_model(args.output_dir),
-        'synthetic': lambda: run_simple_synthetic(args.output_dir),
+        'null': lambda: run_null_model(args.output_dir, args.data_dir),
+        'outlier_injection': lambda: run_outlier_injection(args.output_dir, args.data_dir),
         'real_easy': lambda: run_real_easy(args.output_dir, args.data_dir),
         'real_hard': lambda: run_real_hard(args.output_dir, args.data_dir),
         'failure': lambda: run_failure_case(args.output_dir, args.data_dir),
-        'sensitivity': lambda: run_sensitivity(args.output_dir),
+        'sensitivity': lambda: run_sensitivity(args.output_dir, args.data_dir),
     }
 
     if args.experiment == 'all':
